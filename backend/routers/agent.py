@@ -294,8 +294,72 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
         plugin_result, plugin_name = plugin_res
         return record_agent_log(action="plugin_execution", reply=plugin_result, plugin_name=plugin_name)
 
-    # 2. To-Do & Task Management Intents
-    # A) Add task
+    # 2. To-Do & Task Management Intents (Order: Delete -> Complete -> Add -> List)
+
+    # A) Delete / Remove task
+    if any(k in lower_inst for k in ["delete all", "clear all tasks", "clear my todo", "clear to-do", "remove all tasks", "delete all items"]):
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            cur = conn.execute("DELETE FROM todos")
+            del_count = cur.rowcount
+            now_iso = datetime.now(timezone.utc).isoformat()
+            notification = {"type": "todo_deleted", "all": True, "timestamp": now_iso}
+            for q in list(subscribers):
+                try: q.put_nowait(json.dumps(notification))
+                except Exception: subscribers.discard(q)
+            reply_msg = f"Cleared all {del_count} items from your to-do list."
+            return record_agent_log(action="todo_delete", reply=reply_msg)
+
+    if lower_inst.startswith("delete ") or lower_inst.startswith("remove ") or "delete from" in lower_inst or "remove from" in lower_inst or "delete task" in lower_inst or "remove task" in lower_inst:
+        task_query = re.sub(r"^(?:delete|remove)\s+(?:the\s+|a\s+)?(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?|to-?do:?|reminder:?)?\s*(?:named|called)?\s*:?\s*", "", lower_inst, flags=re.IGNORECASE).strip()
+        task_query = re.sub(r"\s+from\s+(?:my\s+)?(?:to-?do\s+list|tasks|list)\b.*", "", task_query, flags=re.IGNORECASE).strip()
+        task_query = re.sub(r"^(?:the\s+|a\s+)?(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?)\s*", "", task_query, flags=re.IGNORECASE).strip()
+        task_query = task_query.strip(" \"':“”’‘")
+        
+        if task_query:
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT id, text FROM todos WHERE text LIKE ? ORDER BY created_at DESC LIMIT 1", (f"%{task_query}%",)).fetchone()
+                if row:
+                    conn.execute("DELETE FROM todos WHERE id = ?", (row["id"],))
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    notification = {"type": "todo_deleted", "id": row["id"], "text": row["text"], "timestamp": now_iso}
+                    for q in list(subscribers):
+                        try: q.put_nowait(json.dumps(notification))
+                        except Exception: subscribers.discard(q)
+                    reply_msg = f"Deleted '{row['text']}' from your to-do list."
+                    return record_agent_log(
+                        action="todo_delete",
+                        reply=reply_msg,
+                        extra_data={"id": row["id"], "text": row["text"]}
+                    )
+                else:
+                    reply_msg = f"Could not find any task matching '{task_query}' to delete."
+                    return record_agent_log(action="todo_delete", reply=reply_msg, status_str="warning")
+
+    # B) Complete / Mark task done
+    if lower_inst.startswith("complete") or lower_inst.startswith("finish") or lower_inst.startswith("mark ") or " as done" in lower_inst or " done" in lower_inst:
+        task_query = re.sub(r"^(?:complete|finish|mark)\s+(?:the\s+|a\s+)?(?:task|item|reminder|to-?do)?\s*", "", lower_inst, flags=re.IGNORECASE).strip()
+        task_query = re.sub(r"\s+(?:as\s+)?(?:completed|done|finished)\b.*", "", task_query, flags=re.IGNORECASE).strip()
+        task_query = re.sub(r"^(?:the\s+|a\s+)?(?:task|item|reminder|to-?do)\s*", "", task_query, flags=re.IGNORECASE).strip()
+        task_query = task_query.strip(" \"':“”’‘")
+
+        if task_query:
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT id, text FROM todos WHERE completed = 0 AND text LIKE ? LIMIT 1", (f"%{task_query}%",)).fetchone()
+                if row:
+                    conn.execute("UPDATE todos SET completed = 1, updated_at = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), row["id"]))
+                    notification = {"type": "todo_updated", "id": row["id"], "timestamp": datetime.now(timezone.utc).isoformat()}
+                    for q in list(subscribers):
+                        try: q.put_nowait(json.dumps(notification))
+                        except Exception: subscribers.discard(q)
+                    reply_msg = f"Marked task '{row['text']}' as completed."
+                    return record_agent_log(action="todo_complete", reply=reply_msg)
+                else:
+                    reply_msg = f"Could not find any pending task matching '{task_query}' to complete."
+                    return record_agent_log(action="todo_complete", reply=reply_msg, status_str="warning")
+
+    # C) Add task
     add_match = re.search(r"(?:add\s+(?:task|to-?do|item|reminder)?\s*:?\s*|remind\s+me\s+to\s+)(.+)", lower_inst)
     if add_match or lower_inst.startswith("add ") or "add to my todo" in lower_inst or "add to my list" in lower_inst:
         task_text = add_match.group(1).strip() if add_match else inst
@@ -326,8 +390,8 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             extra_data={"id": todo_id, "text": task_text, "priority": priority}
         )
 
-    # B) Get / List tasks
-    if any(k in lower_inst for k in ["what is my todo", "what are my tasks", "what do i have to do", "list my tasks", "show todos", "get todo", "my reminders", "check tasks", "todo list", "what is on my todo", "my to do list", "what's my todo", "what are my todos"]):
+    # D) Get / List tasks
+    if any(lower_inst.startswith(k) for k in ["what is my", "what's my", "what are my", "what do i have", "list my", "list todo", "list tasks", "show my", "show todo", "show tasks", "get my", "get todo", "get tasks", "check tasks", "my tasks", "my todo"]):
         with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute("SELECT text, priority FROM todos WHERE completed = 0 ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at DESC").fetchall()
@@ -341,63 +405,6 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             reply=reply_msg,
             extra_data={"count": len(rows), "items": [dict(r) for r in rows]}
         )
-
-    # C) Complete task
-    if any(lower_inst.startswith(k) for k in ["complete task", "finish task", "mark done", "mark task done", "done with", "complete "]):
-        task_query = re.sub(r"^(?:complete\s+task|finish\s+task|mark\s+done|mark\s+task\s+done|done\s+with|complete)\s+(?:the\s+|a\s+)?", "", lower_inst, flags=re.IGNORECASE).strip()
-        task_query = task_query.strip(" \"':“”’‘")
-        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT id, text FROM todos WHERE completed = 0 AND text LIKE ? LIMIT 1", (f"%{task_query}%",)).fetchone()
-            if row:
-                conn.execute("UPDATE todos SET completed = 1, updated_at = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), row["id"]))
-                notification = {"type": "todo_updated", "id": row["id"], "timestamp": datetime.now(timezone.utc).isoformat()}
-                for q in list(subscribers):
-                    try: q.put_nowait(json.dumps(notification))
-                    except Exception: subscribers.discard(q)
-                reply_msg = f"Marked task '{row['text']}' as completed."
-                return record_agent_log(action="todo_complete", reply=reply_msg)
-
-    # D) Delete / Remove task
-    if any(k in lower_inst for k in ["delete all", "clear all tasks", "clear my todo", "clear to-do", "remove all tasks", "delete all items"]):
-        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
-            cur = conn.execute("DELETE FROM todos")
-            del_count = cur.rowcount
-            now_iso = datetime.now(timezone.utc).isoformat()
-            notification = {"type": "todo_deleted", "all": True, "timestamp": now_iso}
-            for q in list(subscribers):
-                try: q.put_nowait(json.dumps(notification))
-                except Exception: subscribers.discard(q)
-            reply_msg = f"Cleared all {del_count} items from your to-do list."
-            return record_agent_log(action="todo_delete", reply=reply_msg)
-
-    if any(k in lower_inst for k in ["delete task", "remove task", "delete item", "remove item", "delete to-do", "remove to-do", "delete from my todo", "remove from my todo", "delete from todo", "remove from todo"]) or lower_inst.startswith("delete ") or lower_inst.startswith("remove "):
-        # Clean prefixes like "Delete the task \"go to supermarket\" from my to-do list", "delete task buy milk"
-        task_query = re.sub(r"^(?:delete|remove)\s+(?:the\s+|a\s+)?(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?|to-?do:?|reminder:?)?\s*(?:named|called)?\s*:?\s*", "", lower_inst, flags=re.IGNORECASE).strip()
-        task_query = re.sub(r"\s+from\s+(?:my\s+)?(?:to-?do\s+list|tasks|list)\b.*", "", task_query, flags=re.IGNORECASE).strip()
-        task_query = re.sub(r"^(?:the\s+|a\s+)?(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?)\s*", "", task_query, flags=re.IGNORECASE).strip()
-        task_query = task_query.strip(" \"':“”’‘")
-        
-        if task_query:
-            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
-                conn.row_factory = sqlite3.Row
-                row = conn.execute("SELECT id, text FROM todos WHERE text LIKE ? ORDER BY created_at DESC LIMIT 1", (f"%{task_query}%",)).fetchone()
-                if row:
-                    conn.execute("DELETE FROM todos WHERE id = ?", (row["id"],))
-                    now_iso = datetime.now(timezone.utc).isoformat()
-                    notification = {"type": "todo_deleted", "id": row["id"], "text": row["text"], "timestamp": now_iso}
-                    for q in list(subscribers):
-                        try: q.put_nowait(json.dumps(notification))
-                        except Exception: subscribers.discard(q)
-                    reply_msg = f"Deleted '{row['text']}' from your to-do list."
-                    return record_agent_log(
-                        action="todo_delete",
-                        reply=reply_msg,
-                        extra_data={"id": row["id"], "text": row["text"]}
-                    )
-                else:
-                    reply_msg = f"Could not find any task matching '{task_query}' to delete."
-                    return record_agent_log(action="todo_delete", reply=reply_msg, status_str="warning")
 
     # 3. Music Vault Intents
     if any(k in lower_inst for k in ["play music", "play song", "play track", "play playlist", "put on music", "play something"]):
