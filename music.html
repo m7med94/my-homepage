@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SensorsHub Music & Audio Vault — Stream & Upload</title>
+    <meta
+      name="description"
+      content="Upload, stream, and manage MP3, OGG, and WAV audio tracks for SensorsHub and ESP32 device streaming."
+    />
+    <!-- Anti-cache headers -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=2.4.1" />
+    <style>
+      .music-layout {
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 28px;
+        align-items: start;
+        margin-top: 10px;
+      }
+
+      /* Upload Panel */
+      .upload-panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 26px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        backdrop-filter: blur(16px);
+      }
+
+      .drop-zone {
+        border: 2px dashed rgba(56, 189, 248, 0.35);
+        border-radius: var(--radius-md);
+        padding: 36px 20px;
+        text-align: center;
+        background: rgba(56, 189, 248, 0.03);
+        cursor: pointer;
+        transition: all 0.25s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .drop-zone:hover, .drop-zone.dragover {
+        border-color: var(--primary);
+        background: rgba(56, 189, 248, 0.08);
+        transform: translateY(-2px);
+      }
+
+      .drop-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--primary);
+        display: grid;
+        place-items: center;
+      }
+
+      .drop-title {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      .drop-subtitle {
+        font-size: 0.8rem;
+        color: var(--text-dim);
+      }
+
+      .file-meta-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: var(--radius-full);
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+      }
+
+      .upload-progress-box {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .progress-bar-bg {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .progress-bar-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary), var(--accent));
+        transition: width 0.2s ease;
+      }
+
+      /* Track List Section */
+      .tracks-container {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 26px;
+        backdrop-filter: blur(16px);
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        min-height: 520px;
+      }
+
+      .tracks-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .tracks-count-badge {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--primary);
+        padding: 4px 12px;
+        border-radius: var(--radius-full);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+      }
+
+      .tracks-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-height: 600px;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+
+      .track-card {
+        background: rgba(15, 25, 42, 0.6);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 16px 20px;
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: 16px;
+        transition: all 0.2s ease;
+        animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      .track-card:hover {
+        border-color: var(--border-highlight);
+        background: var(--panel-hover);
+      }
+
+      .track-card.playing {
+        border-color: var(--primary);
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      .track-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+        color: var(--primary);
+        display: grid;
+        place-items: center;
+        font-size: 1.1rem;
+      }
+
+      .track-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .track-name {
+        font-size: 0.96rem;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .track-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.76rem;
+        color: var(--text-dim);
+        font-family: var(--font-mono);
+      }
+
+      .track-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-play {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: #03141f;
+        border: none;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        transition: all 0.2s ease;
+      }
+
+      .btn-play:hover {
+        transform: scale(1.08);
+        box-shadow: 0 0 16px var(--primary-glow);
+      }
+
+      .btn-delete-track {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        color: #ef4444;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        transition: all 0.2s ease;
+      }
+
+      .btn-delete-track:hover {
+        background: #ef4444;
+        color: #fff;
+      }
+
+      .btn-copy-url {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        transition: all 0.2s ease;
+      }
+
+      .btn-copy-url:hover {
+        color: #fff;
+        border-color: var(--border-highlight);
+      }
+
+      /* Global Audio Floating Bar */
+      .audio-player-bar {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 48px);
+        max-width: 960px;
+        background: rgba(13, 21, 35, 0.95);
+        border: 1px solid var(--border-highlight);
+        border-radius: var(--radius-lg);
+        padding: 14px 24px;
+        backdrop-filter: blur(20px);
+        box-shadow: var(--shadow-md), 0 0 30px rgba(56, 189, 248, 0.15);
+        display: none;
+        align-items: center;
+        gap: 20px;
+        z-index: 100;
+      }
+
+      .audio-player-bar.active {
+        display: flex;
+        animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .player-track-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 180px;
+        max-width: 260px;
+      }
+
+      .player-track-name {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .player-track-sub {
+        font-size: 0.74rem;
+        color: var(--primary);
+        font-family: var(--font-mono);
+      }
+
+      .custom-audio-native {
+        flex: 1;
+        height: 36px;
+        outline: none;
+      }
+
+      @keyframes slide-up {
+        from { opacity: 0; transform: translate(-50%, 20px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
+      }
+
+      @media (max-width: 900px) {
+        .music-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Background Ambient Glows -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <!-- Navigation Header -->
+    <header class="topbar">
+      <div class="container nav-content">
+        <a href="index.html" class="brand" style="text-decoration: none;">
+          <div class="brand-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+          </div>
+          <div>
+            <span class="brand-title">Sensors<strong>Hub</strong></span>
+            <span class="brand-tag">Music & Audio Vault</span>
+          </div>
+        </a>
+
+        <nav class="nav-links">
+          <a href="index.html" class="nav-link">← Sensors Dashboard</a>
+          <a href="esp32-assistant.html" class="nav-link">📡 Device Events</a>
+          <a href="serverai.html" class="nav-link" style="color: var(--accent); font-weight: 600;">🤖 ServerAI</a>
+          <a href="music.html" class="nav-link active" style="color: #fb7185; font-weight: 600;">🎵 Music Vault</a>
+        </nav>
+
+        <div class="nav-actions">
+          <button class="action-btn" id="btnRefreshTracks" title="Refresh Track List">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span>Refresh</span>
+          </button>
+          <div class="clock-badge" id="timeDisplay">--:--:--</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container main-layout" style="padding-top: 24px;">
+      <!-- Hero Title -->
+      <section class="section-overview" style="margin-bottom: 20px;">
+        <div class="hero-bar">
+          <div>
+            <h1 class="page-title">Music & Audio Server Vault</h1>
+            <p class="page-subtitle">Upload, store, and stream audio files directly from your server to web clients and ESP32 devices.</p>
+          </div>
+          <div class="quick-controls">
+            <span class="device-info-pill">
+              <span class="pulse-dot"></span>
+              <span>Direct URL: /music/{filename}</span>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Music Section Layout -->
+      <div class="music-layout">
+        <!-- Left: Upload Box -->
+        <div class="upload-panel">
+          <h3 style="font-size: 1.1rem; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            Upload Audio File
+          </h3>
+
+          <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept=".mp3,.ogg,.wav,.opus,.m4a,.aac,.flac" style="display: none;" />
+            <div class="drop-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+            </div>
+            <div class="drop-title">Drag & Drop Music File</div>
+            <div class="drop-subtitle">or click to browse from computer</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 4px;">
+              <span class="file-meta-pill">MP3</span>
+              <span class="file-meta-pill">OGG</span>
+              <span class="file-meta-pill">WAV</span>
+              <span class="file-meta-pill">OPUS</span>
+              <span class="file-meta-pill">M4A</span>
+            </div>
+          </div>
+
+          <div class="upload-progress-box" id="progressBox">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
+              <span id="uploadingFileName">Uploading...</span>
+              <span id="uploadPercentage">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="progressBarFill"></div>
+            </div>
+          </div>
+
+          <div style="font-size: 0.78rem; color: var(--text-dim); line-height: 1.6; border-top: 1px solid var(--border); padding-top: 14px;">
+            💡 <strong>ESP32 Streaming Tip:</strong> OGG Opus 16 kHz mono files stream with the lowest latency on your XiaoZhi ESP32 hardware!
+          </div>
+        </div>
+
+        <!-- Right: Track List & Player -->
+        <div class="tracks-container">
+          <div class="tracks-header">
+            <div>
+              <h3 style="font-size: 1.15rem; color: #fff;">Server Music Library</h3>
+              <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 2px;">Stored in <code style="color: var(--primary);">/home/m7med_am/my-homepage/music/</code></p>
+            </div>
+            <span class="tracks-count-badge" id="tracksCountBadge">0 Tracks</span>
+          </div>
+
+          <div class="tracks-list" id="tracksList">
+            <div style="text-align: center; padding: 48px 0; color: var(--text-dim);">
+              Loading music files...
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Persistent Global Audio Player Bar -->
+    <div class="audio-player-bar" id="audioPlayerBar">
+      <div class="track-icon" style="background: rgba(56, 189, 248, 0.15); flex-shrink: 0;">
+        🎵
+      </div>
+      <div class="player-track-meta">
+        <span class="player-track-name" id="nowPlayingTitle">Track Title</span>
+        <span class="player-track-sub" id="nowPlayingSub">Now Playing</span>
+      </div>
+      <audio id="globalAudioPlayer" class="custom-audio-native" controls autoplay></audio>
+      <button class="btn-delete-track" id="btnClosePlayer" title="Close player" style="color: var(--text-dim); border-color: transparent;">
+        &times;
+      </button>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div class="toast-stack" id="toastStack"></div>
+
+    <!-- Footer -->
+    <footer class="site-footer" style="margin-top: 60px;">
+      <div class="container footer-content">
+        <div class="brand">
+          <div class="brand-badge small">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <span>Sensors<strong>Hub</strong></span>
+        </div>
+        <p class="footer-copy">© <span id="year"></span> SensorsHub Music Vault. Powered by FastAPI Audio Streaming.</p>
+        <div class="footer-links">
+          <a href="index.html">Dashboard</a>
+          <a href="esp32-assistant.html">Device Events</a>
+          <a href="serverai.html">ServerAI</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Digital Clock
+      function updateClock() {
+        const d = new Date();
+        const el = document.getElementById('timeDisplay');
+        if (el) el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      setInterval(updateClock, 1000);
+      updateClock();
+
+      document.getElementById('year').textContent = new Date().getFullYear();
+
+      // Toast notification helper
+      function showToast(msg) {
+        const stack = document.getElementById('toastStack');
+        if (!stack) return;
+        const toast = document.createElement('div');
+        toast.className = 'toast-item';
+        toast.textContent = msg;
+        stack.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+      }
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, function(m) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+        });
+      }
+
+      // File Drag & Drop & Upload Handling
+      const dropZone = document.getElementById('dropZone');
+      const fileInput = document.getElementById('fileInput');
+      const progressBox = document.getElementById('progressBox');
+      const progressBarFill = document.getElementById('progressBarFill');
+      const uploadPercentage = document.getElementById('uploadPercentage');
+      const uploadingFileName = document.getElementById('uploadingFileName');
+
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      ['dragenter', 'dragover'].forEach(evt => {
+        dropZone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          dropZone.classList.add('dragover');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(evt => {
+        dropZone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('dragover');
+        });
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          handleFileUpload(files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files && fileInput.files.length > 0) {
+          handleFileUpload(fileInput.files[0]);
+        }
+      });
+
+      function handleFileUpload(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        progressBox.style.display = 'flex';
+        uploadingFileName.textContent = file.name;
+        progressBarFill.style.width = '0%';
+        uploadPercentage.textContent = '0%';
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/v1/music/upload', true);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            progressBarFill.style.width = percent + '%';
+            uploadPercentage.textContent = percent + '%';
+          }
+        };
+
+        xhr.onload = () => {
+          progressBox.style.display = 'none';
+          fileInput.value = '';
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const res = JSON.parse(xhr.responseText);
+            showToast(`🎵 Uploaded: ${file.name}`);
+            loadTracks();
+          } else {
+            try {
+              const err = JSON.parse(xhr.responseText);
+              showToast(`❌ Error: ${err.detail || 'Upload failed'}`);
+            } catch (e) {
+              showToast('❌ Upload failed.');
+            }
+          }
+        };
+
+        xhr.onerror = () => {
+          progressBox.style.display = 'none';
+          fileInput.value = '';
+          showToast('❌ Network error during upload.');
+        };
+
+        xhr.send(formData);
+      }
+
+      // Track List & Playback Controls
+      let currentPlayingFile = null;
+      const audioPlayer = document.getElementById('globalAudioPlayer');
+      const audioPlayerBar = document.getElementById('audioPlayerBar');
+      const nowPlayingTitle = document.getElementById('nowPlayingTitle');
+      const nowPlayingSub = document.getElementById('nowPlayingSub');
+
+      async function loadTracks() {
+        const listEl = document.getElementById('tracksList');
+        const badgeEl = document.getElementById('tracksCountBadge');
+
+        try {
+          const res = await fetch('/api/v1/music');
+          if (!res.ok) throw new Error('Failed to load music files');
+          const data = await res.json();
+          const tracks = data.tracks || [];
+
+          badgeEl.textContent = `${tracks.length} Track${tracks.length !== 1 ? 's' : ''}`;
+
+          if (tracks.length === 0) {
+            listEl.innerHTML = `
+              <div style="text-align: center; padding: 48px 0; color: var(--text-dim); font-size: 0.92rem;">
+                No music files uploaded yet.<br />Drag & drop your first MP3 or OGG track above!
+              </div>
+            `;
+            return;
+          }
+
+          listEl.innerHTML = '';
+          tracks.forEach(track => {
+            const card = document.createElement('div');
+            card.className = `track-card ${currentPlayingFile === track.filename ? 'playing' : ''}`;
+            card.id = `track_${escapeHtml(track.filename)}`;
+
+            card.innerHTML = `
+              <div class="track-icon">🎵</div>
+              <div class="track-info">
+                <span class="track-name" title="${escapeHtml(track.filename)}">${escapeHtml(track.title)}</span>
+                <div class="track-meta">
+                  <span>${escapeHtml(track.extension)}</span>
+                  <span>•</span>
+                  <span>${escapeHtml(track.size_mb)} MB</span>
+                  <span>•</span>
+                  <span>${new Date(track.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                </div>
+              </div>
+              <div class="track-controls">
+                <button class="btn-play" data-url="${escapeHtml(track.url)}" data-name="${escapeHtml(track.title)}" data-file="${escapeHtml(track.filename)}" title="Play Track">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                </button>
+                <button class="btn-copy-url" data-url="${escapeHtml(track.url)}" title="Copy Audio URL">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+                <button class="btn-delete-track" data-file="${escapeHtml(track.filename)}" title="Delete Track">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </div>
+            `;
+
+            // Event bindings
+            const playBtn = card.querySelector('.btn-play');
+            playBtn.addEventListener('click', () => playTrack(track.url, track.title, track.filename));
+
+            const copyBtn = card.querySelector('.btn-copy-url');
+            copyBtn.addEventListener('click', () => {
+              const fullUrl = window.location.origin + track.url;
+              navigator.clipboard.writeText(fullUrl).then(() => {
+                showToast(`📋 Copied URL: ${track.url}`);
+              });
+            });
+
+            const delBtn = card.querySelector('.btn-delete-track');
+            delBtn.addEventListener('click', () => deleteTrack(track.filename));
+
+            listEl.appendChild(card);
+          });
+        } catch (err) {
+          listEl.innerHTML = `<div style="color: #ef4444; padding: 24px 0; text-align: center;">Error loading tracks: ${escapeHtml(err.message)}</div>`;
+        }
+      }
+
+      function playTrack(url, title, filename) {
+        currentPlayingFile = filename;
+        audioPlayer.src = url;
+        nowPlayingTitle.textContent = title;
+        nowPlayingSub.textContent = url;
+        audioPlayerBar.classList.add('active');
+        audioPlayer.play();
+
+        document.querySelectorAll('.track-card').forEach(c => c.classList.remove('playing'));
+        const activeCard = document.getElementById(`track_${filename}`);
+        if (activeCard) activeCard.classList.add('playing');
+      }
+
+      document.getElementById('btnClosePlayer').addEventListener('click', () => {
+        audioPlayer.pause();
+        audioPlayerBar.classList.remove('active');
+        document.querySelectorAll('.track-card').forEach(c => c.classList.remove('playing'));
+        currentPlayingFile = null;
+      });
+
+      async function deleteTrack(filename) {
+        if (!confirm(`Are you sure you want to delete "${filename}"?`)) return;
+
+        try {
+          const res = await fetch(`/api/v1/music/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+          if (res.ok) {
+            showToast(`🗑️ Deleted "${filename}"`);
+            if (currentPlayingFile === filename) {
+              audioPlayer.pause();
+              audioPlayerBar.classList.remove('active');
+            }
+            loadTracks();
+          } else {
+            showToast('Failed to delete track.');
+          }
+        } catch (e) {
+          showToast('Error deleting track.');
+        }
+      }
+
+      document.getElementById('btnRefreshTracks').addEventListener('click', loadTracks);
+
+      // Initialize
+      loadTracks();
+    </script>
+  </body>
+</html>

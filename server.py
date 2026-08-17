@@ -11,10 +11,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Set, Dict, Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, Query, status, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Query, status, Response, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+# Ensure music storage directory exists
+MUSIC_DIR = os.path.join(os.path.dirname(__file__), "music")
+os.makedirs(MUSIC_DIR, exist_ok=True)
 
 # Automatic local .env loader
 def load_env():
@@ -35,9 +40,12 @@ load_env()
 # 1. Initialize FastAPI Application
 app = FastAPI(
     title="SensorsHub Core & ESP32 AI Voice Assistant Gateway",
-    description="High-performance telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, and Server-Side AI Copilot.",
-    version="2.0.0",
+    description="High-performance telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, Music Streaming, and Server-Side AI Copilot.",
+    version="2.1.0",
 )
+
+# Mount /music directory for direct browser and ESP32 audio streaming
+app.mount("/music", StaticFiles(directory=MUSIC_DIR), name="music")
 
 # 2. Browser origin restrictions
 ALLOWED_ORIGINS = [
@@ -502,6 +510,122 @@ def delete_todo(todo_id: str, request: Request):
             raise HTTPException(status_code=404, detail="To-do item not found")
 
     return {"status": "success", "message": "Task deleted successfully"}
+
+# 12. Music & Audio File Management Endpoints (ESP32 & Web Streaming)
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".opus"}
+
+@app.get("/api/v1/music", summary="List Uploaded Music & Audio Tracks")
+def list_music_files(request: Request):
+    require_dashboard_session(request)
+    tracks = []
+    if os.path.exists(MUSIC_DIR):
+        for fname in sorted(os.listdir(MUSIC_DIR)):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in ALLOWED_AUDIO_EXTENSIONS:
+                fpath = os.path.join(MUSIC_DIR, fname)
+                try:
+                    fstat = os.stat(fpath)
+                    tracks.append({
+                        "filename": fname,
+                        "title": os.path.splitext(fname)[0],
+                        "extension": ext.replace(".", "").upper(),
+                        "size_bytes": fstat.st_size,
+                        "size_mb": round(fstat.st_size / (1024 * 1024), 2),
+                        "url": f"/music/{urllib.parse.quote(fname)}",
+                        "created_at": datetime.fromtimestamp(fstat.st_mtime, timezone.utc).isoformat(),
+                    })
+                except Exception:
+                    pass
+
+    return {
+        "status": "success",
+        "count": len(tracks),
+        "tracks": tracks,
+    }
+
+@app.post("/api/v1/music/upload", status_code=status.HTTP_201_CREATED, summary="Upload Music File")
+async def upload_music_file(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    require_dashboard_session(request)
+    
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file selected")
+        
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{ext}'. Allowed audio types: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}"
+        )
+
+    # Sanitize filename
+    safe_filename = "".join(c for c in file.filename if c.isalnum() or c in "._- ").strip()
+    if not safe_filename:
+        safe_filename = f"track_{uuid.uuid4().hex[:8]}{ext}"
+
+    dest_path = os.path.join(MUSIC_DIR, safe_filename)
+    
+    # Write file safely
+    try:
+        contents = await file.read()
+        if len(contents) > 100 * 1024 * 1024:  # 100MB limit
+            raise HTTPException(status_code=413, detail="File too large (max 100MB)")
+            
+        with open(dest_path, "wb") as f:
+            f.write(contents)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write file to disk: {str(e)}")
+
+    file_size_mb = round(len(contents) / (1024 * 1024), 2)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Broadcast notification to active SSE listeners
+    notification = {
+        "type": "music_uploaded",
+        "filename": safe_filename,
+        "size_mb": file_size_mb,
+        "timestamp": now_iso,
+    }
+    for q in list(subscribers):
+        try:
+            q.put_nowait(json.dumps(notification))
+        except Exception:
+            subscribers.discard(q)
+
+    return {
+        "status": "success",
+        "message": f"Track '{safe_filename}' uploaded successfully",
+        "track": {
+            "filename": safe_filename,
+            "title": os.path.splitext(safe_filename)[0],
+            "extension": ext.replace(".", "").upper(),
+            "size_mb": file_size_mb,
+            "url": f"/music/{urllib.parse.quote(safe_filename)}",
+            "created_at": now_iso,
+        }
+    }
+
+@app.delete("/api/v1/music/{filename}", summary="Delete Music File")
+def delete_music_file(filename: str, request: Request):
+    require_dashboard_session(request)
+    
+    # Path traversal protection
+    clean_name = os.path.basename(filename)
+    target_path = os.path.join(MUSIC_DIR, clean_name)
+    
+    if not os.path.exists(target_path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+        
+    try:
+        os.remove(target_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
+
+    return {"status": "success", "message": f"Track '{clean_name}' deleted successfully"}
 
 # 12. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
 @app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry & Task Awareness")
