@@ -169,12 +169,12 @@ async def ingest_device_data(
         "broadcast_subscribers": len(subscribers),
     }
 
-# 8. GET Query Historical Records Endpoint
-@app.get("/api/v1/device/data", summary="Query Device Records")
+# 8. GET Query Records Endpoint (AI Voice Assistant Query & Summary Interface)
+@app.get("/api/v1/device/data", summary="Query Device Records & Voice Summary")
 def query_device_data(
-    device_id: Optional[str] = Query(None, description="Filter by device ID"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    limit: int = Query(50, ge=1, le=500, description="Max entries to return"),
+    category: Optional[str] = Query(None, description="Filter by category (e.g. temperature, alert, general)"),
+    device_id: Optional[str] = Query(None, description="Filter by device ID (e.g. mo-project-c3)"),
+    limit: int = Query(1, ge=1, le=500, description="Number of recent records to return (default 1)"),
 ):
     query = "SELECT id, device_id, category, payload_data, client_ip, created_at FROM telemetry_logs WHERE 1=1"
     params = []
@@ -193,9 +193,32 @@ def query_device_data(
         conn.row_factory = sqlite3.Row
         rows = conn.execute(query, params).fetchall()
 
+    formatted_data = []
+    for r in rows:
+        formatted_data.append({
+            "id": r["id"],
+            "device_id": r["device_id"],
+            "category": r["category"],
+            "payload": r["payload_data"],
+            "payload_data": r["payload_data"],  # for UI backward-compatibility
+            "client_ip": r["client_ip"],
+            "created_at": r["created_at"],
+        })
+
+    # Generate a natural language summary for XiaoZhi AI Voice Assistant to speak
+    if formatted_data:
+        latest = formatted_data[0]
+        cat_name = latest["category"].replace("_", " ")
+        summary = f"Latest {cat_name} is {latest['payload']} recorded from {latest['device_id']}"
+    else:
+        summary = "No telemetry data found for the requested criteria"
+
     return {
-        "count": len(rows),
-        "results": [dict(r) for r in rows],
+        "status": "success",
+        "count": len(formatted_data),
+        "data": formatted_data,
+        "results": formatted_data,
+        "summary": summary,
     }
 
 if __name__ == "__main__":
