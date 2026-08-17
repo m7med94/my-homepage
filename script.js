@@ -463,20 +463,20 @@ function renderSensors() {
         <div class="sensor-title-group">
           <div class="sensor-avatar">${iconSvg}</div>
           <div>
-            <div class="sensor-name">${sensor.name}</div>
-            <div class="sensor-loc" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${subSubtitle}</div>
+            <div class="sensor-name">${escapeHtml(sensor.name)}</div>
+            <div class="sensor-loc" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(subSubtitle)}</div>
           </div>
         </div>
-        <span class="status-tag ${statusClass}">${statusText}</span>
+        <span class="status-tag ${escapeHtml(statusClass)}">${escapeHtml(statusText)}</span>
       </div>
 
       <div class="sensor-data-row">
         <div class="sensor-main-val">
-          <span class="sensor-num" style="${sensor.type === 'Voice' ? 'font-size: 1.5rem;' : ''}">${displayVal}</span>
-          <span class="sensor-unit">${displayUnit}</span>
+          <span class="sensor-num" style="${sensor.type === 'Voice' ? 'font-size: 1.5rem;' : ''}">${escapeHtml(displayVal)}</span>
+          <span class="sensor-unit">${escapeHtml(displayUnit)}</span>
         </div>
         <div class="sparkline-box">
-          <canvas class="sparkline-canvas" id="spark-${sensor.id}" width="100" height="38"></canvas>
+          <canvas class="sparkline-canvas" id="spark-${encodeURIComponent(sensor.id)}" width="100" height="38"></canvas>
         </div>
       </div>
 
@@ -487,21 +487,21 @@ function renderSensors() {
       <div class="sensor-meta-grid">
         <div class="sensor-meta-item">
           <span class="lbl">Category</span>
-          <span class="val">${sensor.category}</span>
+          <span class="val">${escapeHtml(sensor.category)}</span>
         </div>
         <div class="sensor-meta-item">
           <span class="lbl">Type</span>
-          <span class="val">${sensor.type}</span>
+          <span class="val">${escapeHtml(sensor.type)}</span>
         </div>
         <div class="sensor-meta-item">
           <span class="lbl">Updated</span>
-          <span class="val">${timeAgo(sensor.lastUpdate)}</span>
+          <span class="val">${escapeHtml(timeAgo(sensor.lastUpdate))}</span>
         </div>
       </div>
     `;
 
     grid.appendChild(card);
-    drawSparkline(`spark-${sensor.id}`, sensor.history, sensor.accentColor || '#38bdf8');
+    drawSparkline(`spark-${encodeURIComponent(sensor.id)}`, sensor.history, sensor.accentColor || '#38bdf8');
   });
 }
 
@@ -679,6 +679,14 @@ function exportTelemetrySnapshot() {
   showToast('Telemetry JSON snapshot downloaded', 'info');
 }
 
+/** HTML Escaping Helper */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, function(m) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+  });
+}
+
 /** Event Logging Stream */
 function logEvent(message, type = 'info') {
   const container = document.getElementById('eventStreamContainer');
@@ -688,11 +696,19 @@ function logEvent(message, type = 'info') {
   const time = now.toLocaleTimeString('en-US', { hour12: false });
 
   const entry = document.createElement('div');
-  entry.className = `event-entry ${type}`;
-  entry.innerHTML = `
-    <span class="event-time">[${time}]</span>
-    <span class="event-msg">${message}</span>
-  `;
+  entry.className = `event-entry ${escapeHtml(type)}`;
+
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'event-time';
+  timeSpan.textContent = `[${time}]`;
+
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'event-msg';
+  msgSpan.textContent = message;
+
+  entry.appendChild(timeSpan);
+  entry.appendChild(document.createTextNode(' '));
+  entry.appendChild(msgSpan);
 
   container.prepend(entry);
   if (container.children.length > 50) {

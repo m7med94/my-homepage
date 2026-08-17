@@ -111,8 +111,8 @@ init_db()
 
 # 4. Incoming Payload Validation Schemas
 class DevicePayload(BaseModel):
-    device_id: str = Field(..., min_length=1, max_length=128, description="Unique Device ID or MAC Address", example="mo-project-c3")
-    category: str = Field(..., min_length=1, max_length=64, description="Payload category (user_request, telemetry, alert, general)", example="user_request")
+    device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address", example="mo-project-c3")
+    category: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$", description="Payload category (user_request, telemetry, alert, general)", example="user_request")
     data: str = Field(..., min_length=1, max_length=4096, description="Voice transcript, sensor readings, or JSON payload", example="Turn on air conditioning")
     timestamp: Optional[int] = Field(None, description="Optional Unix timestamp from device")
 

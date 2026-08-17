@@ -258,13 +258,13 @@
 
         card.innerHTML = `
           <div class="feed-top">
-            <span class="status-tag ${catClass}">${item.category.toUpperCase()}</span>
-            <span>${formattedTime}</span>
+            <span class="status-tag ${catClass}">${escapeHtml(item.category ? item.category.toUpperCase() : '')}</span>
+            <span>${escapeHtml(formattedTime)}</span>
           </div>
           <div class="feed-msg">${escapeHtml(item.data)}</div>
           <div class="feed-meta">
-            <span>Device: <strong>${item.device_id}</strong></span>
-            ${item.client_ip ? `<span>IP: ${item.client_ip}</span>` : ''}
+            <span>Device: <strong>${escapeHtml(item.device_id)}</strong></span>
+            ${item.client_ip ? `<span>IP: ${escapeHtml(item.client_ip)}</span>` : ''}
           </div>
         `;
         return card;
