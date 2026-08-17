@@ -316,6 +316,37 @@
           </form>
         </div>
       </div>
+
+      <!-- Server Agent Dispatch & Telemetry Audit Log -->
+      <section class="diag-card" style="padding: 24px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); backdrop-filter: blur(16px);">
+        <div class="diag-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="diag-icon" style="--c: #a855f7; width: 34px; height: 34px; border-radius: 8px; background: rgba(168, 85, 247, 0.12); display: grid; place-items: center; color: #a855f7;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            </div>
+            <div>
+              <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 2px;">⚡ Server Agent Dispatch &amp; Telemetry Logs</h3>
+              <p style="font-size: 0.78rem; color: var(--text-dim);">Live audit stream of all voice instructions, plugin executions, and AI actions.</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="btnRefreshAgentLogs" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Refresh
+            </button>
+            <button id="btnClearAgentLogs" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem; border-color: rgba(239, 68, 68, 0.3); color: var(--danger); background: rgba(239, 68, 68, 0.08);" title="Clear all agent logs">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              Clear Logs
+            </button>
+          </div>
+        </div>
+
+        <div id="agentLogsContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 480px; overflow-y: auto;">
+          <div style="text-align: center; padding: 36px 0; color: var(--text-dim);">
+            Loading agent logs...
+          </div>
+        </div>
+      </section>
     </main>
 
     <!-- Footer -->
@@ -540,10 +571,163 @@
           .replace(/\n/g, '<br />');
       }
 
+      // =====================================================================
+      // SERVER AGENT DISPATCH LOGS & REAL-TIME SSE
+      // =====================================================================
+      const agentLogsContainer = document.getElementById('agentLogsContainer');
+      const btnRefreshAgentLogs = document.getElementById('btnRefreshAgentLogs');
+      const btnClearAgentLogs = document.getElementById('btnClearAgentLogs');
+
+      function formatLogTime(isoString) {
+        if (!isoString) return 'Just now';
+        try {
+          const d = new Date(isoString);
+          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        } catch (e) {
+          return isoString;
+        }
+      }
+
+      function createAgentLogCard(log) {
+        const card = document.createElement('div');
+        card.className = 'agent-log-card';
+        card.style.cssText = 'background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transition: all 0.2s ease;';
+        if (log.id) card.dataset.id = log.id;
+
+        const formattedTime = formatLogTime(log.created_at || log.timestamp);
+        const actionText = (log.action || 'agent').replace('_', ' ').toUpperCase();
+        const pluginTag = log.plugin_name ? `<span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">🔌 ${escapeHtml(log.plugin_name)}</span>` : '';
+        const latencyTag = log.latency_ms ? `<span style="font-size: 0.72rem; color: #34d399; margin-left: auto;">⚡ ${log.latency_ms}ms</span>` : '';
+
+        card.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span style="font-size: 0.72rem; font-weight: 700; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); padding: 2px 8px; border-radius: 4px;">🤖 ${escapeHtml(actionText)}</span>
+              ${pluginTag}
+              ${latencyTag}
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.72rem; color: var(--text-dim);">${escapeHtml(formattedTime)}</span>
+              <button class="agent-del-btn" title="Delete record" data-id="${escapeHtml(log.id)}" style="background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 2px; border-radius: 4px; display: grid; place-items: center;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div style="font-size: 0.88rem; color: #fff;">
+            <span style="color: var(--text-dim); font-size: 0.78rem;">🗣️ Prompt:</span> <strong>"${escapeHtml(log.instruction || '')}"</strong>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border-left: 2px solid #a855f7; padding: 6px 10px; border-radius: 0 4px 4px 0; font-size: 0.82rem; color: var(--text-main);">
+            <span style="color: #a855f7; font-weight: 600;">🔊 Spoken Reply:</span> ${escapeHtml(log.reply || '')}
+          </div>
+          <div style="display: flex; gap: 12px; font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">
+            <span>Device: <strong style="color: var(--text-muted);">${escapeHtml(log.device_id || 'mo-project-c3')}</strong></span>
+            ${log.client_ip ? `<span>IP: ${escapeHtml(log.client_ip)}</span>` : ''}
+          </div>
+        `;
+        return card;
+      }
+
+      async function loadAgentLogs() {
+        try {
+          const res = await fetch('/api/v1/agent/logs?limit=40');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.logs && data.logs.length > 0) {
+              agentLogsContainer.innerHTML = '';
+              data.logs.forEach(l => {
+                agentLogsContainer.appendChild(createAgentLogCard(l));
+              });
+            } else {
+              agentLogsContainer.innerHTML = '<div style="text-align:center; padding: 24px; color: var(--text-dim);">No agent instructions dispatched yet. Speak to your ESP32 or test a command to see live logs!</div>';
+            }
+          } else {
+            agentLogsContainer.innerHTML = '<div style="text-align:center; padding: 24px; color: var(--text-dim);">Unable to fetch agent logs.</div>';
+          }
+        } catch (e) {
+          agentLogsContainer.innerHTML = '<div style="text-align:center; padding: 24px; color: var(--text-dim);">Backend connection offline.</div>';
+        }
+      }
+
+      // Connect to SSE for real-time live events
+      function initAgentSSE() {
+        try {
+          const sse = new EventSource('/api/v1/events/stream');
+          sse.onmessage = (e) => {
+            try {
+              const event = JSON.parse(e.data);
+              if (event.type === 'agent_dispatch_log') {
+                const card = createAgentLogCard({
+                  id: event.id,
+                  device_id: event.device_id,
+                  action: event.action,
+                  instruction: event.instruction,
+                  reply: event.reply,
+                  plugin_name: event.plugin_name,
+                  latency_ms: event.latency_ms,
+                  created_at: event.timestamp,
+                  client_ip: event.client_ip
+                });
+                if (agentLogsContainer.children.length === 1 && agentLogsContainer.children[0].textContent.includes('No agent')) {
+                  agentLogsContainer.innerHTML = '';
+                }
+                agentLogsContainer.prepend(card);
+              }
+            } catch (err) {}
+          };
+        } catch (e) {}
+      }
+
+      // Refresh Button
+      if (btnRefreshAgentLogs) {
+        btnRefreshAgentLogs.addEventListener('click', loadAgentLogs);
+      }
+
+      // Clear All Agent Logs
+      if (btnClearAgentLogs) {
+        btnClearAgentLogs.addEventListener('click', async () => {
+          if (!confirm('Are you sure you want to clear all Server Agent dispatch logs?')) return;
+          try {
+            const res = await fetch('/api/v1/agent/logs', { method: 'DELETE' });
+            if (res.ok) {
+              agentLogsContainer.innerHTML = '<div style="text-align:center; padding: 24px; color: var(--text-dim);">All agent logs cleared.</div>';
+            }
+          } catch (e) {}
+        });
+      }
+
+      // Delete Single Card
+      if (agentLogsContainer) {
+        agentLogsContainer.addEventListener('click', async (e) => {
+          const delBtn = e.target.closest('.agent-del-btn');
+          if (!delBtn) return;
+          const logId = delBtn.dataset.id;
+          if (!logId) return;
+
+          try {
+            const res = await fetch(`/api/v1/agent/logs/${encodeURIComponent(logId)}`, { method: 'DELETE' });
+            if (res.ok) {
+              const card = delBtn.closest('.agent-log-card');
+              if (card) {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(-6px)';
+                setTimeout(() => {
+                  card.remove();
+                  if (agentLogsContainer.children.length === 0) {
+                    agentLogsContainer.innerHTML = '<div style="text-align:center; padding: 24px; color: var(--text-dim);">No agent instructions dispatched yet.</div>';
+                  }
+                }, 200);
+              }
+            }
+          } catch (e) {}
+        });
+      }
+
       async function initializeAssistant() {
         try {
           await ensureDashboardSession();
           updateSidebarStats();
+          loadAgentLogs();
+          initAgentSSE();
         } catch (error) {
           appendMessage('assistant', error.message);
           userInput.disabled = true;
