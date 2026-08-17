@@ -58,7 +58,7 @@ class AgentDispatchRequest(BaseModel):
 #     Add a new intent branch inside `dispatch_agent_instruction()` below.
 # =========================================================================================
 
-def execute_server_plugins(instruction: str, context: str = "") -> Optional[str]:
+def execute_server_plugins(instruction: str, context: str = "") -> Optional[tuple[str, str]]:
     """Dynamically discovers and executes any custom Python plugins placed in the plugins/ folder."""
     if not os.path.exists(PLUGINS_DIR):
         return None
@@ -75,7 +75,7 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[str]
                         res = mod.handle_intent(instruction, context)
                         if res and isinstance(res, str):
                             print(f"[Agent Plugin] Executed '{fname}' for instruction: {instruction[:40]}")
-                            return res.strip()
+                            return res.strip(), fname
             except Exception as e:
                 print(f"[Agent Plugin Error] Error executing '{fname}': {e}")
     return None
@@ -234,21 +234,65 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
     """
     Central server-side agent hub for ESP32 and web clients.
     Processes tasks, to-dos, music playback, telemetry queries, and general AI reasoning.
+    Logs every dispatch event for full transparency and telemetry auditing.
     """
+    import time
+    start_time = time.time()
+    log_id = str(uuid.uuid4())
     client_ip = request.client.host if request.client else "unknown"
     enforce_rate_limit(f"agent:{client_ip}", limit=60)
     inst = req.instruction.strip()
     lower_inst = inst.lower()
 
-    # 1. Check custom server plugins first
-    plugin_result = execute_server_plugins(inst, req.context or "")
-    if plugin_result:
-        return {
-            "status": "success",
-            "action": "plugin_execution",
-            "reply": plugin_result,
-            "summary": plugin_result
+    def record_agent_log(action: str, reply: str, plugin_name: Optional[str] = None, extra_data: Optional[dict] = None, status_str: str = "success"):
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+                conn.execute(
+                    "INSERT INTO agent_dispatch_logs (id, device_id, instruction, action, reply, plugin_name, latency_ms, client_ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (log_id, req.device_id or "mo-project-c3", inst, action, reply, plugin_name, duration_ms, client_ip, now_iso)
+                )
+        except Exception as e:
+            print(f"[Agent Log DB Error] {e}")
+
+        # Broadcast SSE notification to real-time dashboards
+        log_event = {
+            "type": "agent_dispatch_log",
+            "id": log_id,
+            "device_id": req.device_id or "mo-project-c3",
+            "instruction": inst,
+            "action": action,
+            "reply": reply,
+            "plugin_name": plugin_name,
+            "latency_ms": duration_ms,
+            "client_ip": client_ip,
+            "timestamp": now_iso,
         }
+        event_str = json.dumps(log_event)
+        for q in list(subscribers):
+            try:
+                q.put_nowait(event_str)
+            except Exception:
+                subscribers.discard(q)
+
+        res_payload = {
+            "status": status_str,
+            "action": action,
+            "reply": reply,
+            "summary": reply,
+            "log_id": log_id,
+            "latency_ms": duration_ms
+        }
+        if extra_data:
+            res_payload["data"] = extra_data
+        return res_payload
+
+    # 1. Check custom server plugins first
+    plugin_res = execute_server_plugins(inst, req.context or "")
+    if plugin_res:
+        plugin_result, plugin_name = plugin_res
+        return record_agent_log(action="plugin_execution", reply=plugin_result, plugin_name=plugin_name)
 
     # 2. To-Do & Task Management Intents
     # A) Add task
@@ -274,13 +318,11 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             except Exception: subscribers.discard(q)
 
         reply_msg = f"Added '{task_text}' to your to-do list with {priority} priority."
-        return {
-            "status": "success",
-            "action": "todo_add",
-            "reply": reply_msg,
-            "summary": reply_msg,
-            "data": {"id": todo_id, "text": task_text, "priority": priority}
-        }
+        return record_agent_log(
+            action="todo_add",
+            reply=reply_msg,
+            extra_data={"id": todo_id, "text": task_text, "priority": priority}
+        )
 
     # B) Get / List tasks
     if any(k in lower_inst for k in ["what is my todo", "what are my tasks", "what do i have to do", "list my tasks", "show todos", "get todo", "my reminders", "check tasks"]):
@@ -292,13 +334,11 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             reply_msg = f"You have {len(rows)} pending task{'s' if len(rows) > 1 else ''}: {items_text}."
         else:
             reply_msg = "You have no pending tasks on your to-do list."
-        return {
-            "status": "success",
-            "action": "todo_list",
-            "reply": reply_msg,
-            "summary": reply_msg,
-            "data": {"count": len(rows), "items": [dict(r) for r in rows]}
-        }
+        return record_agent_log(
+            action="todo_list",
+            reply=reply_msg,
+            extra_data={"count": len(rows), "items": [dict(r) for r in rows]}
+        )
 
     # C) Complete task
     if any(lower_inst.startswith(k) for k in ["complete task", "finish task", "mark done", "mark task done", "done with"]):
@@ -313,7 +353,7 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
                     try: q.put_nowait(json.dumps(notification))
                     except Exception: subscribers.discard(q)
                 reply_msg = f"Marked task '{row['text']}' as completed."
-                return {"status": "success", "action": "todo_complete", "reply": reply_msg, "summary": reply_msg}
+                return record_agent_log(action="todo_complete", reply=reply_msg)
 
     # D) Delete / Remove task
     if any(k in lower_inst for k in ["delete task", "remove task", "delete item", "remove item", "delete to-do", "remove to-do", "delete from my todo", "remove from my todo", "delete from todo", "remove from todo"]) or (lower_inst.startswith("delete ") and ("task" in lower_inst or "todo" in lower_inst or "item" in lower_inst or "milk" in lower_inst or "bread" in lower_inst)) or lower_inst.startswith("delete "):
@@ -334,32 +374,32 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
                         try: q.put_nowait(json.dumps(notification))
                         except Exception: subscribers.discard(q)
                     reply_msg = f"Deleted '{row['text']}' from your to-do list."
-                    return {"status": "success", "action": "todo_delete", "reply": reply_msg, "summary": reply_msg, "data": {"id": row["id"], "text": row["text"]}}
+                    return record_agent_log(
+                        action="todo_delete",
+                        reply=reply_msg,
+                        extra_data={"id": row["id"], "text": row["text"]}
+                    )
                 else:
                     reply_msg = f"Could not find any task matching '{task_query}' to delete."
-                    return {"status": "warning", "action": "todo_delete", "reply": reply_msg, "summary": reply_msg}
+                    return record_agent_log(action="todo_delete", reply=reply_msg, status_str="warning")
 
     # 3. Music Vault Intents
     if any(k in lower_inst for k in ["play music", "play song", "play track", "play playlist", "put on music", "play something"]):
         query = re.sub(r"^(play\s+music|play\s+song|play\s+track|play\s+playlist|put\s+on\s+music|play\s+something)\s*", "", lower_inst).strip()
         music_res = voice_music_action(query=query if query else "random", action="play")
-        return {
-            "status": "success",
-            "action": "music_play",
-            "reply": music_res.get("tts_message", "Starting music playback."),
-            "summary": music_res.get("tts_message", "Starting music playback."),
-            "data": music_res
-        }
+        return record_agent_log(
+            action="music_play",
+            reply=music_res.get("tts_message", "Starting music playback."),
+            extra_data=music_res
+        )
 
     if any(k in lower_inst for k in ["what music do you have", "list music", "what songs do i have", "list playlists", "show music"]):
         music_res = voice_music_action(query="", action="list")
-        return {
-            "status": "success",
-            "action": "music_list",
-            "reply": music_res.get("tts_message", "Here is your music library."),
-            "summary": music_res.get("tts_message", "Here is your music library."),
-            "data": music_res
-        }
+        return record_agent_log(
+            action="music_list",
+            reply=music_res.get("tts_message", "Here is your music library."),
+            extra_data=music_res
+        )
 
     # 4. Sensor & Telemetry Queries
     if any(k in lower_inst for k in ["sensor data", "temperature", "humidity", "telemetry", "device status", "sensor status", "battery status"]):
@@ -370,19 +410,71 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             reply_msg = f"Latest telemetry from {row['device_id']}: {row['category']} is {row['payload_data']}."
         else:
             reply_msg = "No recent sensor telemetry records found in the database."
-        return {
-            "status": "success",
-            "action": "telemetry_query",
-            "reply": reply_msg,
-            "summary": reply_msg
-        }
+        return record_agent_log(action="telemetry_query", reply=reply_msg)
 
     # 5. General AI Inference (Gemini / AI Model with full telemetry & task context)
     ai_resp = await ai_chat(ChatRequest(message=inst, include_telemetry=True), request)
     reply_text = ai_resp.get("reply", "I processed your request.")
+    return record_agent_log(action="ai_inference", reply=reply_text)
+
+# =========================================================================================
+# AGENT LOGGING & AUDIT ENDPOINTS
+# =========================================================================================
+
+@router.get("/api/v1/agent/logs", summary="Query Server Agent Dispatch & Execution Logs")
+def get_agent_logs(
+    request: Request,
+    device_id: Optional[str] = Query(None, description="Filter by device ID"),
+    action: Optional[str] = Query(None, description="Filter by action"),
+    limit: int = Query(50, ge=1, le=500, description="Number of log records"),
+):
+    """Query recent Server Agent execution history, latency, and actions."""
+    require_dashboard_session(request)
+    query = "SELECT id, device_id, instruction, action, reply, plugin_name, latency_ms, client_ip, created_at FROM agent_dispatch_logs WHERE 1=1"
+    params = []
+    if device_id:
+        query += " AND device_id = ?"
+        params.append(device_id)
+    if action:
+        query += " AND action = ?"
+        params.append(action)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+
+    logs = [dict(r) for r in rows]
     return {
         "status": "success",
-        "action": "ai_inference",
-        "reply": reply_text,
-        "summary": reply_text
+        "count": len(logs),
+        "logs": logs
+    }
+
+@router.delete("/api/v1/agent/logs", summary="Clear Server Agent Dispatch Logs")
+def clear_agent_logs(request: Request):
+    """Clears all Server Agent dispatch log records."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute("DELETE FROM agent_dispatch_logs")
+        deleted_count = res.rowcount
+    return {
+        "status": "success",
+        "message": f"Successfully deleted {deleted_count} agent log record(s)",
+        "deleted_count": deleted_count
+    }
+
+@router.delete("/api/v1/agent/logs/{log_id}", summary="Delete Single Agent Log Record")
+def delete_single_agent_log(log_id: str, request: Request):
+    """Deletes a single Server Agent log record by ID."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute("DELETE FROM agent_dispatch_logs WHERE id = ?", (log_id,))
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Agent log record not found")
+    return {
+        "status": "success",
+        "message": "Agent log record deleted successfully",
+        "log_id": log_id
     }

@@ -66,6 +66,23 @@ def init_db():
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_playlist_id ON playlist_tracks (playlist_id);")
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS agent_dispatch_logs (
+                id TEXT PRIMARY KEY,
+                device_id TEXT NOT NULL,
+                instruction TEXT NOT NULL,
+                action TEXT NOT NULL,
+                reply TEXT NOT NULL,
+                plugin_name TEXT,
+                latency_ms REAL DEFAULT 0.0,
+                client_ip TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_device_id ON agent_dispatch_logs (device_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_action ON agent_dispatch_logs (action);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_created_at ON agent_dispatch_logs (created_at);")
+
         # Seed sample todos if table is empty
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM todos")
