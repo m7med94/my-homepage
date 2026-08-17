@@ -91,6 +91,23 @@
         font-family: var(--font-mono);
       }
 
+      .feed-del-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-dim);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.15s ease, background 0.15s ease;
+      }
+      .feed-del-btn:hover {
+        color: var(--danger);
+        background: rgba(239, 68, 68, 0.12);
+      }
+
       /* To-Do List Styles */
       .todo-section {
         background: var(--panel);
@@ -408,10 +425,16 @@
             </div>
             <h3>Live Transcripts &amp; Telemetry Stream</h3>
           </div>
-          <button id="btnRefreshFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-            Refresh
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button id="btnRefreshFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Refresh
+            </button>
+            <button id="btnClearFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem; border-color: rgba(239, 68, 68, 0.3); color: var(--danger); background: rgba(239, 68, 68, 0.08);" title="Clear all telemetry transmissions">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              Clear All
+            </button>
+          </div>
         </div>
 
         <div class="feed-container" id="liveFeedContainer">
@@ -560,6 +583,7 @@
         feedContainer.innerHTML = '';
         records.forEach((rec) => {
           const card = createFeedCard({
+            id: rec.id,
             device_id: rec.device_id,
             category: rec.category,
             data: rec.payload_data,
@@ -574,14 +598,23 @@
       function createFeedCard(item) {
         const card = document.createElement('div');
         card.className = 'feed-card';
+        if (item.id) card.dataset.id = item.id;
 
         const catClass = item.category === 'alert' ? 'offline' : 'online';
         const formattedTime = item.timestamp ? formatTime(item.timestamp) : 'Just now';
+        const deleteBtn = item.id ? `
+          <button class="feed-del-btn" title="Delete record" data-id="${escapeHtml(item.id)}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        ` : '';
 
         card.innerHTML = `
           <div class="feed-top">
             <span class="status-tag ${catClass}">${escapeHtml(item.category ? item.category.toUpperCase() : '')}</span>
-            <span>${escapeHtml(formattedTime)}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>${escapeHtml(formattedTime)}</span>
+              ${deleteBtn}
+            </div>
           </div>
           <div class="feed-msg">${escapeHtml(item.data)}</div>
           <div class="feed-meta">
@@ -603,6 +636,7 @@
                 fetchTodosFromApi();
               } else if (event.type === 'esp32_data') {
                 const card = createFeedCard({
+                  id: event.id,
                   device_id: event.device_id,
                   category: event.category,
                   data: event.data,
@@ -625,6 +659,56 @@
 
       // Refresh button
       document.getElementById('btnRefreshFeed').addEventListener('click', loadRecentRecords);
+
+      // Clear All Feed Transmissions
+      const btnClearFeed = document.getElementById('btnClearFeed');
+      if (btnClearFeed) {
+        btnClearFeed.addEventListener('click', async () => {
+          if (!confirm('Are you sure you want to remove all live transcripts & telemetry records?')) return;
+          try {
+            const res = await fetch(apiUrl, { method: 'DELETE' });
+            if (res.ok) {
+              const data = await res.json();
+              feedContainer.innerHTML = '<div style="text-align:center; padding: 36px 0; color: var(--text-dim);">No transmissions yet. Speak to your XiaoZhi assistant to see live messages here!</div>';
+              showToast(`🗑️ ${data.message || 'Telemetry records cleared'}`);
+            } else {
+              showToast('❌ Failed to clear telemetry records');
+            }
+          } catch (e) {
+            showToast('❌ Network error while clearing records');
+          }
+        });
+      }
+
+      // Delete Single Feed Card
+      feedContainer.addEventListener('click', async (e) => {
+        const delBtn = e.target.closest('.feed-del-btn');
+        if (!delBtn) return;
+        const entryId = delBtn.dataset.id;
+        if (!entryId) return;
+
+        try {
+          const res = await fetch(`${apiUrl}/${encodeURIComponent(entryId)}`, { method: 'DELETE' });
+          if (res.ok) {
+            const card = delBtn.closest('.feed-card');
+            if (card) {
+              card.style.opacity = '0';
+              card.style.transform = 'translateY(-8px)';
+              setTimeout(() => {
+                card.remove();
+                if (feedContainer.children.length === 0) {
+                  feedContainer.innerHTML = '<div style="text-align:center; padding: 36px 0; color: var(--text-dim);">No transmissions yet. Speak to your XiaoZhi assistant to see live messages here!</div>';
+                }
+              }, 200);
+            }
+            showToast('🗑️ Record deleted');
+          } else {
+            showToast('❌ Failed to delete record');
+          }
+        } catch (err) {
+          showToast('❌ Network error');
+        }
+      });
 
       // Toast notification helper
       function showToast(msg) {

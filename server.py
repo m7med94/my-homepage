@@ -424,6 +424,49 @@ def query_device_data(
         "summary": summary,
     }
 
+# 9b. DELETE Telemetry Records (Clear All or Filtered)
+@app.delete("/api/v1/device/data", summary="Clear Device Telemetry Records")
+def clear_device_data(
+    request: Request,
+    category: Optional[str] = Query(None, description="Filter by category"),
+    device_id: Optional[str] = Query(None, description="Filter by device ID"),
+):
+    require_dashboard_session(request)
+    query = "DELETE FROM telemetry_logs WHERE 1=1"
+    params = []
+
+    if device_id:
+        query += " AND device_id = ?"
+        params.append(device_id)
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute(query, params)
+        deleted_count = res.rowcount
+
+    return {
+        "status": "success",
+        "message": f"Successfully deleted {deleted_count} record(s)",
+        "deleted_count": deleted_count,
+    }
+
+# 9c. DELETE Single Telemetry Record by ID
+@app.delete("/api/v1/device/data/{entry_id}", summary="Delete Single Device Telemetry Record")
+def delete_single_device_data(entry_id: str, request: Request):
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute("DELETE FROM telemetry_logs WHERE id = ?", (entry_id,))
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Telemetry record not found")
+
+    return {
+        "status": "success",
+        "message": "Record deleted successfully",
+        "entry_id": entry_id,
+    }
+
 # 10. GET Telemetry Stats Summary
 @app.get("/api/v1/device/stats", summary="Telemetry Fleet Statistics")
 def get_device_stats(request: Request):
