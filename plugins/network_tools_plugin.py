@@ -77,6 +77,13 @@ def check_esp32_connection_status() -> str:
                     q.put_nowait(event_str)
                 except Exception:
                     subscribers.discard(q)
+
+            # 3. Queue directly for ESP32 hardware device long-poll listener
+            try:
+                from backend.routers.agent import queue_message_for_esp32
+                queue_message_for_esp32(greeting_text, dev_id)
+            except Exception as e:
+                pass
         except Exception as ex:
             print(f"[Network Tools Plugin] Greeting event note: {ex}")
 

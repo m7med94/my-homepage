@@ -26,8 +26,22 @@ from backend.config import (
 )
 from backend.events import subscribers
 from backend.routers.music import voice_music_action
+from collections import deque
 
 router = APIRouter(tags=["Agent & ServerAI"])
+
+# In-memory queue of outbound messages queued for ESP32 hardware client polling
+_pending_esp32_messages = deque(maxlen=50)
+
+def queue_message_for_esp32(text: str, device_id: str = "mo-project-c3", audio_url: Optional[str] = None):
+    """Enqueues a message for the ESP32 bot to poll, display, and read aloud."""
+    _pending_esp32_messages.append({
+        "id": str(uuid.uuid4()),
+        "device_id": device_id,
+        "text": text,
+        "audio_url": audio_url,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt")
@@ -471,3 +485,42 @@ def delete_single_agent_log(log_id: str, request: Request):
         "message": "Agent log record deleted successfully",
         "log_id": log_id
     }
+
+# =========================================================================================
+# HARDWARE OUTBOUND MESSAGE DISPATCH
+# =========================================================================================
+
+@router.get("/api/v1/agent/messages/pending", summary="Fetch Pending Messages for ESP32 Hardware")
+def get_pending_esp32_message(device_id: str = Query("mo-project-c3")):
+    """Pops the next pending message queued for the ESP32 bot to speak or display."""
+    if _pending_esp32_messages:
+        for _ in range(len(_pending_esp32_messages)):
+            msg = _pending_esp32_messages.popleft()
+            if not msg.get("device_id") or msg.get("device_id") == device_id or device_id == "all":
+                return {
+                    "status": "success",
+                    "has_message": True,
+                    "id": msg["id"],
+                    "message": msg["text"],
+                    "audio_url": msg.get("audio_url"),
+                    "created_at": msg["created_at"],
+                }
+            else:
+                _pending_esp32_messages.append(msg)
+                
+    return {
+        "status": "success",
+        "has_message": False,
+        "message": None,
+    }
+
+@router.post("/api/v1/agent/messages/send", summary="Push Message to ESP32 Hardware")
+def send_message_to_esp32(req: dict, request: Request):
+    """Push a text message or greeting to be read aloud by the ESP32 bot."""
+    text = req.get("message") or req.get("text")
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing 'message' field")
+    dev_id = req.get("device_id", "mo-project-c3")
+    audio_url = req.get("audio_url")
+    queue_message_for_esp32(text, dev_id, audio_url)
+    return {"status": "success", "message": "Message queued for ESP32 bot"}
