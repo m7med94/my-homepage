@@ -1,7 +1,9 @@
-# server.py — Production ESP32 AI Voice Assistant Backend & AI Copilot Gateway
 import asyncio
+import glob
+import importlib.util
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -19,9 +21,11 @@ from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-# Ensure music storage directory exists
+# Ensure music and plugins storage directories exist
 MUSIC_DIR = os.path.join(os.path.dirname(__file__), "music")
+PLUGINS_DIR = os.path.join(os.path.dirname(__file__), "plugins")
 os.makedirs(MUSIC_DIR, exist_ok=True)
+os.makedirs(PLUGINS_DIR, exist_ok=True)
 
 def convert_to_esp32_opus(input_path: str) -> Optional[str]:
     """
@@ -237,6 +241,11 @@ class PlaylistAddTrack(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt")
     include_telemetry: Optional[bool] = Field(True, description="Whether to include live sensor context")
+
+class AgentDispatchRequest(BaseModel):
+    instruction: str = Field(..., min_length=1, max_length=4000, description="User instruction, question, task, or command")
+    device_id: Optional[str] = Field("mo-project-c3", max_length=128)
+    context: Optional[str] = Field("general", max_length=64)
 
 # 5. Dashboard session exchange. The dashboard token is never persisted in browser storage.
 @app.post("/api/v1/auth/session", status_code=status.HTTP_204_NO_CONTENT, summary="Create Dashboard Session")
@@ -1223,6 +1232,164 @@ async def ai_chat(req: ChatRequest, request: Request):
             return {"status": "success", "reply": reply.strip()}
     except Exception as e:
         return {"status": "error", "reply": f"AI Service Error: {str(e)}"}
+
+# 16. Universal Server-Side Agent Gateway & Dynamic Plugin Dispatcher
+def execute_server_plugins(instruction: str, context: str = "") -> Optional[str]:
+    """Dynamically discovers and executes any custom Python plugins placed in the plugins/ folder."""
+    if not os.path.exists(PLUGINS_DIR):
+        return None
+    for fname in sorted(os.listdir(PLUGINS_DIR)):
+        if fname.endswith(".py") and not fname.startswith("__"):
+            fpath = os.path.join(PLUGINS_DIR, fname)
+            try:
+                mod_name = f"plugin_{os.path.splitext(fname)[0]}"
+                spec = importlib.util.spec_from_file_location(mod_name, fpath)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    if hasattr(mod, "handle_intent") and callable(mod.handle_intent):
+                        res = mod.handle_intent(instruction, context)
+                        if res and isinstance(res, str):
+                            print(f"[Agent Plugin] Executed '{fname}' for instruction: {instruction[:40]}")
+                            return res.strip()
+            except Exception as e:
+                print(f"[Agent Plugin Error] Error executing '{fname}': {e}")
+    return None
+
+@app.post("/api/v1/agent/dispatch", summary="Universal Server-Side Agent Dispatcher")
+async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request):
+    """
+    Central server-side agent hub for ESP32 and web clients.
+    Processes tasks, to-dos, music playback, telemetry queries, and general AI reasoning.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_rate_limit(f"agent:{client_ip}", limit=60)
+    inst = req.instruction.strip()
+    lower_inst = inst.lower()
+
+    # 1. Check custom server plugins first
+    plugin_result = execute_server_plugins(inst, req.context or "")
+    if plugin_result:
+        return {
+            "status": "success",
+            "action": "plugin_execution",
+            "reply": plugin_result,
+            "summary": plugin_result
+        }
+
+    # 2. To-Do & Task Management Intents
+    # A) Add task
+    add_match = re.search(r"(?:add\s+(?:task|to-?do|item|reminder)?\s*:?\s*|remind\s+me\s+to\s+)(.+)", lower_inst)
+    if add_match or lower_inst.startswith("add ") or "add to my todo" in lower_inst or "add to my list" in lower_inst:
+        task_text = add_match.group(1).strip() if add_match else inst
+        task_text = re.sub(r"\s+to\s+(?:my\s+)?(?:to-?do\s+list|tasks|list)\b.*", "", task_text, flags=re.IGNORECASE).strip()
+        priority = "high" if "high priority" in lower_inst or "urgent" in lower_inst or "important" in lower_inst else "normal"
+        task_text = re.sub(r"\s+with\s+(?:high|normal|routine)\s+priority.*", "", task_text, flags=re.IGNORECASE).strip()
+        if not task_text:
+            task_text = inst
+
+        todo_id = str(uuid.uuid4())
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.execute(
+                "INSERT INTO todos (id, text, priority, completed, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)",
+                (todo_id, task_text, priority, now_iso, now_iso),
+            )
+        # Broadcast SSE
+        notification = {"type": "todo_created", "id": todo_id, "text": task_text, "priority": priority, "timestamp": now_iso}
+        for q in list(subscribers):
+            try: q.put_nowait(json.dumps(notification))
+            except Exception: subscribers.discard(q)
+
+        reply_msg = f"Added '{task_text}' to your to-do list with {priority} priority."
+        return {
+            "status": "success",
+            "action": "todo_add",
+            "reply": reply_msg,
+            "summary": reply_msg,
+            "data": {"id": todo_id, "text": task_text, "priority": priority}
+        }
+
+    # B) Get / List tasks
+    if any(k in lower_inst for k in ["what is my todo", "what are my tasks", "what do i have to do", "list my tasks", "show todos", "get todo", "my reminders", "check tasks"]):
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT text, priority FROM todos WHERE completed = 0 ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at DESC").fetchall()
+        if rows:
+            items_text = ", ".join([f"{i+1}. {r['text']}" for i, r in enumerate(rows)])
+            reply_msg = f"You have {len(rows)} pending task{'s' if len(rows) > 1 else ''}: {items_text}."
+        else:
+            reply_msg = "You have no pending tasks on your to-do list."
+        return {
+            "status": "success",
+            "action": "todo_list",
+            "reply": reply_msg,
+            "summary": reply_msg,
+            "data": {"count": len(rows), "items": [dict(r) for r in rows]}
+        }
+
+    # C) Complete task
+    if any(lower_inst.startswith(k) for k in ["complete task", "finish task", "mark done", "mark task done", "done with"]):
+        task_query = re.sub(r"^(complete\s+task|finish\s+task|mark\s+done|mark\s+task\s+done|done\s+with)\s*", "", lower_inst).strip()
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT id, text FROM todos WHERE completed = 0 AND text LIKE ? LIMIT 1", (f"%{task_query}%",)).fetchone()
+            if row:
+                conn.execute("UPDATE todos SET completed = 1, updated_at = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), row["id"]))
+                notification = {"type": "todo_updated", "id": row["id"], "timestamp": datetime.now(timezone.utc).isoformat()}
+                for q in list(subscribers):
+                    try: q.put_nowait(json.dumps(notification))
+                    except Exception: subscribers.discard(q)
+                reply_msg = f"Marked task '{row['text']}' as completed."
+                return {"status": "success", "action": "todo_complete", "reply": reply_msg, "summary": reply_msg}
+
+    # 3. Music Vault Intents
+    if any(k in lower_inst for k in ["play music", "play song", "play track", "play playlist", "put on music", "play something"]):
+        query = re.sub(r"^(play\s+music|play\s+song|play\s+track|play\s+playlist|put\s+on\s+music|play\s+something)\s*", "", lower_inst).strip()
+        music_res = voice_music_action(query=query if query else "random", action="play")
+        return {
+            "status": "success",
+            "action": "music_play",
+            "reply": music_res.get("tts_message", "Starting music playback."),
+            "summary": music_res.get("tts_message", "Starting music playback."),
+            "data": music_res
+        }
+
+    if any(k in lower_inst for k in ["what music do you have", "list music", "what songs do i have", "list playlists", "show music"]):
+        music_res = voice_music_action(query="", action="list")
+        return {
+            "status": "success",
+            "action": "music_list",
+            "reply": music_res.get("tts_message", "Here is your music library."),
+            "summary": music_res.get("tts_message", "Here is your music library."),
+            "data": music_res
+        }
+
+    # 4. Sensor & Telemetry Queries
+    if any(k in lower_inst for k in ["sensor data", "temperature", "humidity", "telemetry", "device status", "sensor status", "battery status"]):
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 1").fetchone()
+        if row:
+            reply_msg = f"Latest telemetry from {row['device_id']}: {row['category']} is {row['payload_data']}."
+        else:
+            reply_msg = "No recent sensor telemetry records found in the database."
+        return {
+            "status": "success",
+            "action": "telemetry_query",
+            "reply": reply_msg,
+            "summary": reply_msg
+        }
+
+    # 5. General AI Inference (Gemini / AI Model with full telemetry & task context)
+    ai_resp = await ai_chat(ChatRequest(message=inst, include_telemetry=True), request)
+    reply_text = ai_resp.get("reply", "I processed your request.")
+    return {
+        "status": "success",
+        "action": "ai_inference",
+        "reply": reply_text,
+        "summary": reply_text
+    }
 
 if __name__ == "__main__":
     import uvicorn

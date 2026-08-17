@@ -206,7 +206,67 @@ private:
                 return false;
             });
 
-        // Tool 3: Send data / events to external backend server
+        // Tool 3: Universal Server Agent Dispatcher (Delegates all heavy logic, to-dos, music, questions to server)
+        mcp.AddTool(
+            "self.server.dispatch",
+            "Send any task, to-do item, reminder, music request, sensor query, question, or general instruction to the central server agent to execute.",
+            PropertyList({
+                Property("instruction", kPropertyTypeString),
+                Property("context", kPropertyTypeString, std::string("general"))
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                std::string instruction = properties["instruction"].value<std::string>();
+                std::string context = properties["context"].value<std::string>();
+                return DispatchInstructionToServer(instruction, context);
+            });
+
+        // Tool 4: Play music or playlist from the server music vault
+        mcp.AddTool(
+            "self.music.play",
+            "Search and play a music track or playlist from the server music vault. "
+            "Use this whenever the user asks to play music, play a song, play a playlist (e.g. 'favorites'), or play something random.",
+            PropertyList({
+                Property("query", kPropertyTypeString, std::string("random"))
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                std::string query = properties["query"].value<std::string>();
+                return ResolveVoiceMusicAction(query, "play");
+            });
+
+        // Tool 5: List available music & playlists in the server vault
+        mcp.AddTool(
+            "self.music.list",
+            "List available music tracks and playlists stored on the server. "
+            "Use this whenever the user asks 'what music do you have', 'what songs do I have', or 'list my playlists'.",
+            PropertyList(),
+            [this](const PropertyList&) -> ReturnValue {
+                return ResolveVoiceMusicAction("", "list");
+            });
+
+        // Tool 6: Get To-Do list & pending tasks from the server
+        mcp.AddTool(
+            "self.todo.get_list",
+            "Fetch and speak the user's current to-do list, pending action items, and tasks from the server.",
+            PropertyList(),
+            [this](const PropertyList&) -> ReturnValue {
+                return DispatchInstructionToServer("what is my todo list", "todo");
+            });
+
+        // Tool 7: Add a task to the To-Do list on the server
+        mcp.AddTool(
+            "self.todo.add_item",
+            "Add a new task, item, or reminder to the user's to-do list on the server.",
+            PropertyList({
+                Property("text", kPropertyTypeString),
+                Property("priority", kPropertyTypeString, std::string("normal"))
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                std::string text = properties["text"].value<std::string>();
+                std::string priority = properties["priority"].value<std::string>();
+                return DispatchInstructionToServer("add " + text + " with " + priority + " priority", "todo");
+            });
+
+        // Tool 8: Send / Read generic telemetry data
         mcp.AddTool(
             "self.server.send_data",
             "Send custom data, logs, alerts, or events to the external server backend.",
@@ -220,67 +280,75 @@ private:
                 bool success = SendDataToServer(data, category);
                 return success ? "Data successfully sent to server." : "Failed to connect to backend server.";
             });
+    }
 
-        // Tool 4: Read latest data / sensor telemetry from external backend server
-        mcp.AddTool(
-            "self.server.read_data",
-            "Fetch the latest sensor readings, telemetry, logs, or status from the backend server.",
-            PropertyList({
-                Property("category", kPropertyTypeString, std::string("all"))
-            }),
-            [this](const PropertyList& properties) -> ReturnValue {
-                std::string category = properties["category"].value<std::string>();
-                return ReadDataFromServer(category);
-            });
+    std::string DispatchInstructionToServer(const std::string& instruction, const std::string& context = "general") {
+        auto network = GetNetwork();
+        if (!network) {
+            ESP_LOGE(TAG, "Network not ready, cannot reach server agent");
+            return "Network connection unavailable.";
+        }
 
-        // Tool 5: Get To-Do list & pending tasks from the server
-        mcp.AddTool(
-            "self.todo.get_list",
-            "Fetch and speak the user's current to-do list, pending action items, and tasks from the server. "
-            "Use this whenever the user asks 'what is my to-do list', 'what are my tasks', 'what do I need to do', "
-            "or asks about their reminders.",
-            PropertyList(),
-            [this](const PropertyList&) -> ReturnValue {
-                return ReadTodosFromServer();
-            });
+        auto http = network->CreateHttp(3);
+        if (!http) {
+            ESP_LOGE(TAG, "Failed to create HTTP client for agent dispatch");
+            return "Internal HTTP client error.";
+        }
 
-        // Tool 6: Add a task to the To-Do list on the server
-        mcp.AddTool(
-            "self.todo.add_item",
-            "Add a new task, item, or reminder to the user's to-do list on the server. "
-            "Use this whenever the user asks to add, create, or remind them of a task.",
-            PropertyList({
-                Property("text", kPropertyTypeString),
-                Property("priority", kPropertyTypeString, std::string("normal"))
-            }),
-            [this](const PropertyList& properties) -> ReturnValue {
-                std::string text = properties["text"].value<std::string>();
-                std::string priority = properties["priority"].value<std::string>();
-                return AddTodoToServer(text, priority);
-            });
+        cJSON* root = cJSON_CreateObject();
+        cJSON_AddStringToObject(root, "instruction", instruction.c_str());
+        cJSON_AddStringToObject(root, "device_id", "mo-project-c3");
+        cJSON_AddStringToObject(root, "context", context.c_str());
+        char* post_data = cJSON_PrintUnformatted(root);
+        cJSON_Delete(root);
 
-        // Tool 7: Play music or playlist from the server music vault
-        mcp.AddTool(
-            "self.music.play",
-            "Search and play a music track or playlist from the server music vault. "
-            "Use this whenever the user asks to play music, play a song, play a playlist (e.g. 'favorites'), or play something random.",
-            PropertyList({
-                Property("query", kPropertyTypeString, std::string("random"))
-            }),
-            [this](const PropertyList& properties) -> ReturnValue {
-                std::string query = properties["query"].value<std::string>();
-                return ResolveVoiceMusicAction(query, "play");
-            });
+        if (!post_data) {
+            return "Error formatting agent request.";
+        }
 
-        // Tool 8: List available music & playlists in the server vault
-        mcp.AddTool(
-            "self.music.list",
-            "List available music tracks and playlists stored on the server. "
-            "Use this whenever the user asks 'what music do you have', 'what songs do I have', or 'list my playlists'.",
-            PropertyList(),
-            [this](const PropertyList&) -> ReturnValue {
-                return ResolveVoiceMusicAction("", "list");
-            });
+        http->SetTimeout(BACKEND_SERVER_TIMEOUT_MS);
+        http->SetHeader("Content-Type", "application/json");
+        http->SetContent(std::string(post_data));
+        free(post_data);
+
+        ESP_LOGI(TAG, "Dispatching instruction to server agent: %s", BACKEND_AGENT_URL);
+        if (!http->Open("POST", BACKEND_AGENT_URL)) {
+            ESP_LOGE(TAG, "Failed to connect to agent at %s", BACKEND_AGENT_URL);
+            return "Could not connect to the central server agent.";
+        }
+
+        int status_code = http->GetStatusCode();
+        if (status_code < 200 || status_code >= 300) {
+            ESP_LOGE(TAG, "Agent server returned HTTP error: %d", status_code);
+            http->Close();
+            return "Server agent encountered an error (code " + std::to_string(status_code) + ").";
+        }
+
+        std::string response_body = http->ReadAll();
+        http->Close();
+
+        if (response_body.empty()) {
+            return "Server agent returned an empty response.";
+        }
+
+        cJSON* resp_json = cJSON_Parse(response_body.c_str());
+        if (resp_json) {
+            cJSON* reply = cJSON_GetObjectItem(resp_json, "reply");
+            if (cJSON_IsString(reply) && reply->valuestring != nullptr) {
+                std::string reply_str = reply->valuestring;
+                cJSON_Delete(resp_json);
+                return reply_str;
+            }
+            cJSON* summary = cJSON_GetObjectItem(resp_json, "summary");
+            if (cJSON_IsString(summary) && summary->valuestring != nullptr) {
+                std::string summary_str = summary->valuestring;
+                cJSON_Delete(resp_json);
+                return summary_str;
+            }
+            cJSON_Delete(resp_json);
+        }
+
+        return response_body;
     }
 
     bool SendDataToServer(const std::string& data, const std::string& category) {
@@ -380,97 +448,6 @@ private:
         }
 
         return response_body;
-    }
-
-    std::string ReadTodosFromServer() {
-        auto network = GetNetwork();
-        if (!network) {
-            ESP_LOGE(TAG, "Network not ready, cannot fetch to-dos");
-            return "Network connection unavailable.";
-        }
-
-        auto http = network->CreateHttp(3);
-        if (!http) {
-            ESP_LOGE(TAG, "Failed to create HTTP client for to-dos");
-            return "Internal HTTP client error.";
-        }
-
-        std::string url = std::string(BACKEND_TODOS_URL) + "?completed=false";
-        http->SetTimeout(BACKEND_SERVER_TIMEOUT_MS);
-        ESP_LOGI(TAG, "Fetching to-do list from: %s", url.c_str());
-
-        if (!http->Open("GET", url)) {
-            ESP_LOGE(TAG, "Failed to connect to to-do server at %s", url.c_str());
-            return "Could not connect to the server to check your tasks.";
-        }
-
-        int status_code = http->GetStatusCode();
-        if (status_code < 200 || status_code >= 300) {
-            ESP_LOGE(TAG, "Server returned error code %d for to-dos", status_code);
-            http->Close();
-            return "Failed to load to-do list from server.";
-        }
-
-        std::string response_body = http->ReadAll();
-        http->Close();
-
-        if (response_body.empty()) {
-            return "No task information returned from the server.";
-        }
-
-        cJSON* root = cJSON_Parse(response_body.c_str());
-        if (root) {
-            cJSON* summary = cJSON_GetObjectItem(root, "summary");
-            if (cJSON_IsString(summary) && summary->valuestring != nullptr) {
-                std::string summary_text = summary->valuestring;
-                cJSON_Delete(root);
-                return summary_text;
-            }
-            cJSON_Delete(root);
-        }
-
-        return response_body;
-    }
-
-    std::string AddTodoToServer(const std::string& text, const std::string& priority) {
-        auto network = GetNetwork();
-        if (!network) {
-            return "Network connection unavailable.";
-        }
-
-        auto http = network->CreateHttp(3);
-        if (!http) {
-            return "Internal HTTP error.";
-        }
-
-        cJSON* root = cJSON_CreateObject();
-        cJSON_AddStringToObject(root, "text", text.c_str());
-        cJSON_AddStringToObject(root, "priority", priority.c_str());
-        char* post_data = cJSON_PrintUnformatted(root);
-        cJSON_Delete(root);
-
-        if (!post_data) {
-            return "Failed to prepare task data.";
-        }
-
-        http->SetTimeout(BACKEND_SERVER_TIMEOUT_MS);
-        http->SetHeader("Content-Type", "application/json");
-        http->SetContent(std::string(post_data));
-        free(post_data);
-
-        ESP_LOGI(TAG, "Posting new to-do to: %s", BACKEND_TODOS_URL);
-        if (!http->Open("POST", BACKEND_TODOS_URL)) {
-            return "Failed to connect to the to-do server.";
-        }
-
-        int status_code = http->GetStatusCode();
-        http->Close();
-
-        if (status_code >= 200 && status_code < 300) {
-            return "Task \"" + text + "\" added to your to-do list.";
-        } else {
-            return "Failed to save task to server.";
-        }
     }
 
     std::string ResolveVoiceMusicAction(const std::string& query, const std::string& action) {
