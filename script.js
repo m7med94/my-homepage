@@ -148,8 +148,30 @@ const ICONS = {
   Light: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
 };
 
+/** Exchange the dashboard token for an HttpOnly same-origin session cookie. */
+async function ensureDashboardSession() {
+  const existing = await fetch('/api/v1/device/stats');
+  if (existing.ok) return;
+  if (existing.status !== 401) throw new Error('Unable to verify dashboard access.');
+
+  const token = window.prompt('Enter the SensorsHub dashboard access token:');
+  if (!token) throw new Error('Dashboard authentication is required.');
+
+  const session = await fetch('/api/v1/auth/session', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!session.ok) throw new Error('Dashboard token was not accepted.');
+}
+
 /** Initialize Application */
-function initApp() {
+async function initApp() {
+  try {
+    await ensureDashboardSession();
+  } catch (error) {
+    document.getElementById('sensorsGrid').textContent = error.message;
+    return;
+  }
   bindEvents();
   renderSensors();
   updateTopMetrics();

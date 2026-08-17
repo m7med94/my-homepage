@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import secrets
 import sqlite3
 import time
 import urllib.request
@@ -10,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Set, Dict, Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, Query, status
+from fastapi import FastAPI, Header, HTTPException, Request, Query, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -38,18 +39,54 @@ app = FastAPI(
     version="2.0.0",
 )
 
-# 2. Universal CORS Middleware Configuration
+# 2. Browser origin restrictions
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:8000").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 DB_PATH = "esp32_telemetry.db"
 subscribers: Set[asyncio.Queue] = set()
 ACTIVE_GEMINI_MODEL: Optional[str] = "gemini-2.5-flash-lite"
+SESSION_TTL_SECONDS = 12 * 60 * 60
+sessions: Dict[str, float] = {}
+rate_limit_windows: Dict[str, List[float]] = {}
+
+def require_bearer_token(authorization: Optional[str], expected_token: Optional[str]):
+    """Require an exact bearer token without leaking which part was invalid."""
+    if not expected_token or not authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    scheme, _, supplied_token = authorization.partition(" ")
+    if scheme != "Bearer" or not secrets.compare_digest(supplied_token, expected_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+def require_dashboard_session(request: Request):
+    session_id = request.cookies.get("sensorshub_session")
+    expires_at = sessions.get(session_id or "")
+    if not expires_at or expires_at <= time.time():
+        if session_id:
+            sessions.pop(session_id, None)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Dashboard authentication required")
+
+def enforce_rate_limit(bucket: str, limit: int, window_seconds: int = 60):
+    """Small, process-local guard against abuse; use a shared limiter for multi-worker deployments."""
+    now = time.monotonic()
+    entries = [entry for entry in rate_limit_windows.get(bucket, []) if now - entry < window_seconds]
+    if len(entries) >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. Please retry shortly.",
+        )
+    entries.append(now)
+    rate_limit_windows[bucket] = entries
 
 # 3. High-Concurrency SQLite Database Initialization (WAL Mode)
 def init_db():
@@ -74,16 +111,37 @@ init_db()
 
 # 4. Incoming Payload Validation Schemas
 class DevicePayload(BaseModel):
-    device_id: str = Field(..., description="Unique Device ID or MAC Address", example="mo-project-c3")
-    category: str = Field(..., description="Payload category (user_request, telemetry, alert, general)", example="user_request")
-    data: str = Field(..., description="Voice transcript, sensor readings, or JSON payload", example="Turn on air conditioning")
+    device_id: str = Field(..., min_length=1, max_length=128, description="Unique Device ID or MAC Address", example="mo-project-c3")
+    category: str = Field(..., min_length=1, max_length=64, description="Payload category (user_request, telemetry, alert, general)", example="user_request")
+    data: str = Field(..., min_length=1, max_length=4096, description="Voice transcript, sensor readings, or JSON payload", example="Turn on air conditioning")
     timestamp: Optional[int] = Field(None, description="Optional Unix timestamp from device")
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., description="User question or prompt", example="What is the current temperature?")
+    message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt", example="What is the current temperature?")
     include_telemetry: Optional[bool] = Field(True, description="Whether to include live sensor context")
 
-# 5. Health Check Endpoint
+# 5. Dashboard session exchange. The dashboard token is never persisted in browser storage.
+@app.post("/api/v1/auth/session", status_code=status.HTTP_204_NO_CONTENT, summary="Create Dashboard Session")
+def create_dashboard_session(response: Response, authorization: Optional[str] = Header(None)):
+    require_bearer_token(authorization, os.getenv("DASHBOARD_API_TOKEN"))
+    session_id = secrets.token_urlsafe(32)
+    now = time.time()
+    sessions[session_id] = now + SESSION_TTL_SECONDS
+    # Opportunistically discard expired sessions.
+    for key, expires_at in list(sessions.items()):
+        if expires_at <= now:
+            sessions.pop(key, None)
+    response.set_cookie(
+        key="sensorshub_session",
+        value=session_id,
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
+        samesite="lax",
+    )
+    return response
+
+# 6. Health Check Endpoint
 @app.get("/health", summary="Health Check")
 def health_check():
     api_key_configured = bool(
@@ -98,11 +156,12 @@ def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-# 6. Real-Time SSE Notification Stream (Server-Sent Events)
+# 7. Real-Time SSE Notification Stream (Server-Sent Events)
 @app.get("/api/v1/events/stream", summary="Live Telemetry Event Stream")
 async def event_stream(request: Request):
     """Server-Sent Events (SSE) stream to push instant notifications to dashboards whenever ESP32 transmits."""
-    queue = asyncio.Queue()
+    require_dashboard_session(request)
+    queue = asyncio.Queue(maxsize=100)
     subscribers.add(queue)
 
     async def sse_generator():
@@ -113,8 +172,12 @@ async def event_stream(request: Request):
             while True:
                 if await request.is_disconnected():
                     break
-                data = await queue.get()
-                yield f"data: {data}\n\n"
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=20)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep proxies alive and re-check client disconnection regularly.
+                    yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
         finally:
@@ -130,7 +193,7 @@ async def event_stream(request: Request):
         }
     )
 
-# 7. POST Ingestion Endpoint (Stores to SQLite & Broadcasts Real-Time SSE Notification)
+# 8. POST Ingestion Endpoint (Stores to SQLite & Broadcasts Real-Time SSE Notification)
 @app.post("/api/v1/device/data", status_code=status.HTTP_201_CREATED, summary="Ingest Device Payload")
 async def ingest_device_data(
     payload: DevicePayload,
@@ -141,11 +204,8 @@ async def ingest_device_data(
     client_ip = request.client.host if request.client else "unknown"
     entry_id = str(uuid.uuid4())
 
-    if authorization and not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"status": "error", "message": "Invalid or missing authorization token"}
-        )
+    require_bearer_token(authorization, os.getenv("DEVICE_API_TOKEN"))
+    enforce_rate_limit(f"device:{client_ip}", limit=120)
 
     try:
         with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
@@ -177,7 +237,8 @@ async def ingest_device_data(
     for q in list(subscribers):
         try:
             q.put_nowait(event_str)
-        except Exception:
+        except asyncio.QueueFull:
+            # Slow consumers must reconnect rather than retaining an unbounded event backlog.
             subscribers.discard(q)
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [201 INGEST] Device:{payload.device_id} | Cat:{payload.category} | IP:{client_ip} | Latency:{duration_ms}ms")
@@ -192,13 +253,15 @@ async def ingest_device_data(
         "broadcast_subscribers": len(subscribers),
     }
 
-# 8. GET Query Records Endpoint (Natural-Language Voice Summary + List)
+# 9. GET Query Records Endpoint (Natural-Language Voice Summary + List)
 @app.get("/api/v1/device/data", summary="Query Device Records & Voice Summary")
 def query_device_data(
+    request: Request,
     category: Optional[str] = Query(None, description="Filter by category"),
     device_id: Optional[str] = Query(None, description="Filter by device ID"),
     limit: int = Query(1, ge=1, le=500, description="Number of recent records"),
 ):
+    require_dashboard_session(request)
     query = "SELECT id, device_id, category, payload_data, client_ip, created_at FROM telemetry_logs WHERE 1=1"
     params = []
 
@@ -243,9 +306,10 @@ def query_device_data(
         "summary": summary,
     }
 
-# 9. GET Telemetry Stats Summary
+# 10. GET Telemetry Stats Summary
 @app.get("/api/v1/device/stats", summary="Telemetry Fleet Statistics")
-def get_device_stats():
+def get_device_stats(request: Request):
+    require_dashboard_session(request)
     with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
         conn.row_factory = sqlite3.Row
         total_records = conn.execute("SELECT COUNT(*) AS total FROM telemetry_logs").fetchone()["total"]
@@ -261,10 +325,13 @@ def get_device_stats():
         "latest_transmission": dict(latest_entry) if latest_entry else None,
     }
 
-# 10. POST AI Assistant Chat Endpoint (Server-Side High-Speed Inference)
+# 11. POST AI Assistant Chat Endpoint (Server-Side High-Speed Inference)
 @app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Telemetry Awareness")
-async def ai_chat(req: ChatRequest):
+async def ai_chat(req: ChatRequest, request: Request):
     global ACTIVE_GEMINI_MODEL
+    require_dashboard_session(request)
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_rate_limit(f"ai:{client_ip}", limit=20)
     api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
 
     telemetry_context = ""
