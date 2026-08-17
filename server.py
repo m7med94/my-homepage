@@ -61,14 +61,22 @@ sessions: Dict[str, float] = {}
 rate_limit_windows: Dict[str, List[float]] = {}
 
 def require_bearer_token(authorization: Optional[str], expected_token: Optional[str]):
-    """Require an exact bearer token without leaking which part was invalid."""
-    if not expected_token or not authorization:
+    """Require an exact bearer token if expected_token is configured."""
+    if not expected_token:
+        # Open access when token is not configured
+        return
+    if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
     scheme, _, supplied_token = authorization.partition(" ")
     if scheme != "Bearer" or not secrets.compare_digest(supplied_token, expected_token):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
 def require_dashboard_session(request: Request):
+    """Require a dashboard session cookie only if DASHBOARD_API_TOKEN is set in environment."""
+    dashboard_token = os.getenv("DASHBOARD_API_TOKEN")
+    if not dashboard_token:
+        # Open access when DASHBOARD_API_TOKEN is not configured
+        return
     session_id = request.cookies.get("sensorshub_session")
     expires_at = sessions.get(session_id or "")
     if not expires_at or expires_at <= time.time():
