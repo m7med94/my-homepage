@@ -15,11 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-# Automatic local .env loader (without requiring external dependencies)
+# Automatic local .env loader
 def load_env():
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
-        with open(env_path, "r") as f:
+        with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
@@ -32,7 +32,7 @@ load_env()
 app = FastAPI(
     title="ESP32 AI Voice Assistant Telemetry Gateway",
     description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices with live SSE notifications and Server-Side AI Copilot.",
-    version="1.2.1",
+    version="1.3.0",
 )
 
 # 2. CORS Middleware Configuration
@@ -45,9 +45,8 @@ app.add_middleware(
 )
 
 DB_PATH = "esp32_telemetry.db"
-
-# In-memory list of active SSE subscriber queues for real-time notification broadcasting
 subscribers: Set[asyncio.Queue] = set()
+ACTIVE_GEMINI_MODEL: Optional[str] = None
 
 # 3. Database Initialization (SQLite with Indexed Fields)
 def init_db():
@@ -90,13 +89,13 @@ def health_check():
         "service": "ESP32 Voice Telemetry Gateway",
         "active_sse_subscribers": len(subscribers),
         "ai_server_key_configured": api_key_configured,
+        "cached_gemini_model": ACTIVE_GEMINI_MODEL,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-# 6. Real-Time SSE Notification Stream (Server-Sent Events)
+# 6. Real-Time SSE Notification Stream
 @app.get("/api/v1/events/stream", summary="Live Telemetry Event Stream")
 async def event_stream(request: Request):
-    """Server-Sent Events (SSE) stream to push instant notifications to dashboards whenever ESP32 transmits."""
     queue = asyncio.Queue()
     subscribers.add(queue)
 
@@ -142,7 +141,6 @@ async def ingest_device_data(
             detail={"status": "error", "message": "Invalid or missing authorization token"}
         )
 
-    # Persist entry to SQLite
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
@@ -169,7 +167,6 @@ async def ingest_device_data(
         "latency_ms": duration_ms
     }
 
-    # Broadcast notification in real-time to all connected web dashboards
     event_str = json.dumps(notification_event)
     for q in list(subscribers):
         try:
@@ -192,9 +189,9 @@ async def ingest_device_data(
 # 8. GET Query Records Endpoint
 @app.get("/api/v1/device/data", summary="Query Device Records & Voice Summary")
 def query_device_data(
-    category: Optional[str] = Query(None, description="Filter by category (e.g. temperature, alert, general)"),
-    device_id: Optional[str] = Query(None, description="Filter by device ID (e.g. mo-project-c3)"),
-    limit: int = Query(1, ge=1, le=500, description="Number of recent records to return (default 1)"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    device_id: Optional[str] = Query(None, description="Filter by device ID"),
+    limit: int = Query(1, ge=1, le=500, description="Number of recent records"),
 ):
     query = "SELECT id, device_id, category, payload_data, client_ip, created_at FROM telemetry_logs WHERE 1=1"
     params = []
@@ -240,44 +237,8 @@ def query_device_data(
         "summary": summary,
     }
 
-# 9. POST AI Assistant Chat Endpoint (Server-Side Key Resolution)
+# 9. POST AI Assistant Chat Endpoint
 @app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Telemetry Awareness")
-async def ai_chat(req: ChatRequest):
-    # Server-Side API Key Resolution
-    api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
-
-    # Fetch recent telemetry logs from database for AI context
-    telemetry_context = ""
-    if req.include_telemetry:
-        try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.row_factory = sqlite3.Row
-                logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 10").fetchall()
-                if logs:
-                    telemetry_context = "\n[Current IoT & ESP32 Live Telemetry Logs in Database]:\n" + "\n".join(
-                        [f"- ({r['created_at']}) Device '{r['device_id']}' [{r['category']}]: {r['payload_data']}" for r in logs]
-                    )
-        except Exception:
-            pass
-
-    system_instruction = (
-        "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer directly, naturally, and concisely in English. "
-        "IMPORTANT: Output ONLY your final conversational response. Do NOT include any internal thoughts, bullet points of persona analysis, or drafts."
-    )
-
-    if not api_key:
-        return {
-            "status": "warning",
-            "reply": "⚠️ **Server AI Key Not Configured Yet.**\n\nPlease add your API key into `/home/m7med_am/my-homepage/.env` as `GEMINI_API_KEY=\"...\"`, then restart `server.py`.\n\nHere is your local database status:\n" + (telemetry_context or "No telemetry records yet."),
-            "telemetry_included": bool(telemetry_context)
-        }
-
-# Cached active model to eliminate repeated discovery network overhead
-ACTIVE_GEMINI_MODEL: Optional[str] = None
-
-# 9. POST AI Assistant Chat Endpoint (Fast Cached Server-Side Execution)
-@app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Fast Cached Execution")
 async def ai_chat(req: ChatRequest):
     global ACTIVE_GEMINI_MODEL
     api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -289,7 +250,7 @@ async def ai_chat(req: ChatRequest):
                 conn.row_factory = sqlite3.Row
                 logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 5").fetchall()
                 if logs:
-                    telemetry_context = "\n[Live Telemetry Context]:\n" + "\n".join(
+                    telemetry_context = "\n[Current Live Telemetry in Database]:\n" + "\n".join(
                         [f"- {r['device_id']} [{r['category']}]: {r['payload_data']}" for r in logs]
                     )
         except Exception:
@@ -297,22 +258,14 @@ async def ai_chat(req: ChatRequest):
 
     system_instruction = (
         "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer concisely in 1-3 sentences in English. Do NOT output internal thoughts, reasoning steps, or notes."
+        "Answer naturally, helpful, and concisely in 1-3 sentences in English. Refer to live telemetry logs when relevant."
     )
 
     if not api_key:
         return {
             "status": "warning",
-            "reply": "⚠️ Server AI Key not set in `.env`.",
+            "reply": "⚠️ Server AI Key not set in `.env`. Please add `GEMINI_API_KEY=\"...\"` to `/home/m7med_am/my-homepage/.env`.",
         }
-
-    def clean_reply(text: str) -> str:
-        if not text:
-            return "Hello! SensorsHub AI Copilot is online. How can I assist you with your smart devices today?"
-        text = text.strip()
-        if "<thought>" in text and "</thought>" in text:
-            text = text.split("</thought>")[-1].strip()
-        return text or "Hello! How can I help you today?"
 
     is_gemini = (
         api_key.startswith("AIza")
@@ -322,25 +275,21 @@ async def ai_chat(req: ChatRequest):
     )
 
     if is_gemini:
+        # Build standard Gemini request
         payload = {
-            "systemInstruction": {
-                "parts": [{
-                    "text": "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. Answer naturally, informatively, and concisely in 1-3 sentences in English."
-                }]
-            },
             "contents": [{
                 "parts": [{
-                    "text": f"{telemetry_context}\n\nUser Message: {req.message}"
+                    "text": f"{system_instruction}\n{telemetry_context}\n\nUser Question: {req.message}"
                 }]
             }],
             "generationConfig": {
-                "temperature": 0.5,
-                "maxOutputTokens": 400
+                "temperature": 0.6,
+                "maxOutputTokens": 450
             }
         }
         req_data = json.dumps(payload).encode("utf-8")
 
-        def run_gemini_request(model_name: str):
+        def run_gemini(model_name: str):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req_obj, timeout=15) as response:
@@ -350,21 +299,20 @@ async def ai_chat(req: ChatRequest):
                     if "content" in cand and "parts" in cand["content"]:
                         full_text = "".join([p.get("text", "") for p in cand["content"]["parts"] if "text" in p])
                         if full_text.strip():
-                            return full_text
+                            return full_text.strip()
                 if "error" in res_body:
-                    raise Exception(res_body["error"].get("message", "Unknown Gemini Error"))
+                    raise Exception(res_body["error"].get("message", "Unknown error"))
             return None
 
-        # 1. Fast path: If active model is already cached, execute directly
+        # Try cached model first
         if ACTIVE_GEMINI_MODEL:
             try:
-                raw_reply = await asyncio.to_thread(run_gemini_request, ACTIVE_GEMINI_MODEL)
-                if raw_reply:
-                    return {"status": "success", "reply": clean_reply(raw_reply), "model": ACTIVE_GEMINI_MODEL}
+                ans = await asyncio.to_thread(run_gemini, ACTIVE_GEMINI_MODEL)
+                if ans:
+                    return {"status": "success", "reply": ans, "model": ACTIVE_GEMINI_MODEL}
             except Exception:
-                ACTIVE_GEMINI_MODEL = None  # Reset cache on failure to re-discover
+                ACTIVE_GEMINI_MODEL = None
 
-        # 2. Discovery path: Try priority models
         candidate_models = [
             "gemini-1.5-flash",
             "gemini-1.5-flash-001",
@@ -374,25 +322,26 @@ async def ai_chat(req: ChatRequest):
             "gemini-pro"
         ]
 
-        last_error = "No models responded"
-        for model_name in candidate_models:
+        last_err = ""
+        for m in candidate_models:
             try:
-                raw_reply = await asyncio.to_thread(run_gemini_request, model_name)
-                if raw_reply:
-                    ACTIVE_GEMINI_MODEL = model_name  # Cache for future calls
-                    return {"status": "success", "reply": clean_reply(raw_reply), "model": model_name}
+                ans = await asyncio.to_thread(run_gemini, m)
+                if ans:
+                    ACTIVE_GEMINI_MODEL = m
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [AI SUCCESS] Model: {m} | Question: {req.message[:30]}")
+                    return {"status": "success", "reply": ans, "model": m}
             except urllib.error.HTTPError as he:
-                last_error = he.read().decode("utf-8")
+                last_err = he.read().decode("utf-8")
                 if he.code in (400, 404):
                     continue
-                return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_error}"}
+                return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_err}"}
             except Exception as e:
-                last_error = str(e)
+                last_err = str(e)
                 continue
 
-        return {"status": "error", "reply": f"Gemini Gateway Error: {last_error}"}
+        return {"status": "error", "reply": f"Could not reach Gemini model: {last_err}"}
 
-    # Default / OpenAI / Groq Compatible
+    # OpenAI / Groq fallback
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
     model = "llama-3.1-8b-instant" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "gpt-4o-mini"
 
@@ -415,7 +364,7 @@ async def ai_chat(req: ChatRequest):
         with urllib.request.urlopen(req_obj, timeout=15) as response:
             res_body = json.loads(response.read().decode("utf-8"))
             reply = res_body["choices"][0]["message"]["content"]
-            return {"status": "success", "reply": reply}
+            return {"status": "success", "reply": reply.strip()}
     except Exception as e:
         return {"status": "error", "reply": f"AI Service Error: {str(e)}"}
 
