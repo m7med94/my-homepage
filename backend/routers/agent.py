@@ -302,6 +302,8 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
         task_text = re.sub(r"\s+to\s+(?:my\s+)?(?:to-?do\s+list|tasks|list)\b.*", "", task_text, flags=re.IGNORECASE).strip()
         priority = "high" if "high priority" in lower_inst or "urgent" in lower_inst or "important" in lower_inst else "normal"
         task_text = re.sub(r"\s+with\s+(?:high|normal|routine)\s+priority.*", "", task_text, flags=re.IGNORECASE).strip()
+        task_text = re.sub(r"^(?:the\s+|a\s+)?(?:task|item|reminder|to-?do)\s*", "", task_text, flags=re.IGNORECASE).strip()
+        task_text = task_text.strip(" \"':“”’‘")
         if not task_text:
             task_text = inst
 
@@ -341,8 +343,9 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
         )
 
     # C) Complete task
-    if any(lower_inst.startswith(k) for k in ["complete task", "finish task", "mark done", "mark task done", "done with"]):
-        task_query = re.sub(r"^(complete\s+task|finish\s+task|mark\s+done|mark\s+task\s+done|done\s+with)\s*", "", lower_inst).strip()
+    if any(lower_inst.startswith(k) for k in ["complete task", "finish task", "mark done", "mark task done", "done with", "complete "]):
+        task_query = re.sub(r"^(?:complete\s+task|finish\s+task|mark\s+done|mark\s+task\s+done|done\s+with|complete)\s+(?:the\s+|a\s+)?", "", lower_inst, flags=re.IGNORECASE).strip()
+        task_query = task_query.strip(" \"':“”’‘")
         with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT id, text FROM todos WHERE completed = 0 AND text LIKE ? LIMIT 1", (f"%{task_query}%",)).fetchone()
@@ -369,11 +372,11 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             return record_agent_log(action="todo_delete", reply=reply_msg)
 
     if any(k in lower_inst for k in ["delete task", "remove task", "delete item", "remove item", "delete to-do", "remove to-do", "delete from my todo", "remove from my todo", "delete from todo", "remove from todo"]) or lower_inst.startswith("delete ") or lower_inst.startswith("remove "):
-        # Clean prefixes like "Delete to do list item: Go outside", "delete task buy milk"
-        task_query = re.sub(r"^(?:delete|remove)\s+(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?|to-?do:?|reminder:?)?\s*(?:named|called)?\s*:?\s*", "", lower_inst, flags=re.IGNORECASE).strip()
+        # Clean prefixes like "Delete the task \"go to supermarket\" from my to-do list", "delete task buy milk"
+        task_query = re.sub(r"^(?:delete|remove)\s+(?:the\s+|a\s+)?(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?|to-?do:?|reminder:?)?\s*(?:named|called)?\s*:?\s*", "", lower_inst, flags=re.IGNORECASE).strip()
         task_query = re.sub(r"\s+from\s+(?:my\s+)?(?:to-?do\s+list|tasks|list)\b.*", "", task_query, flags=re.IGNORECASE).strip()
-        task_query = re.sub(r"^(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?)\s*", "", task_query, flags=re.IGNORECASE).strip()
-        task_query = task_query.strip(": ")
+        task_query = re.sub(r"^(?:the\s+|a\s+)?(?:to-?do\s+list\s+item:?|to-?do\s+item:?|task:?|item:?)\s*", "", task_query, flags=re.IGNORECASE).strip()
+        task_query = task_query.strip(" \"':“”’‘")
         
         if task_query:
             with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
