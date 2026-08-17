@@ -1,0 +1,237 @@
+# backend/routers/telemetry.py — Device Telemetry Ingestion & Query Routes
+import asyncio
+import json
+import os
+import sqlite3
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Header, HTTPException, Request, Query, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from backend.config import (
+    DB_PATH,
+    require_bearer_token,
+    require_dashboard_session,
+    enforce_rate_limit,
+)
+from backend.events import subscribers
+
+router = APIRouter(tags=["Telemetry & Events"])
+
+class DevicePayload(BaseModel):
+    device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address")
+    category: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$", description="Log or Sensor category")
+    data: str = Field(..., min_length=1, max_length=4000, description="Raw or formatted telemetry payload string")
+
+@router.get("/api/v1/events/stream", summary="Live Telemetry Event Stream")
+async def event_stream(request: Request):
+    """Server-Sent Events (SSE) stream to push instant notifications to dashboards whenever ESP32 transmits."""
+    require_dashboard_session(request)
+    queue = asyncio.Queue(maxsize=100)
+    subscribers.add(queue)
+
+    async def sse_generator():
+        try:
+            init_msg = json.dumps({"type": "connected", "message": "Listening for live ESP32 telemetry & voice events..."})
+            yield f"data: {init_msg}\n\n"
+
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=20)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            subscribers.discard(queue)
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+@router.post("/api/v1/device/data", status_code=status.HTTP_201_CREATED, summary="Ingest Device Payload")
+async def ingest_device_data(
+    payload: DevicePayload,
+    request: Request,
+    authorization: Optional[str] = Header(None),
+):
+    """Stores telemetry data from ESP32 into SQLite and broadcasts real-time SSE event to web dashboard."""
+    start_time = time.time()
+    client_ip = request.client.host if request.client else "unknown"
+    entry_id = str(uuid.uuid4())
+
+    require_bearer_token(authorization, os.getenv("DEVICE_API_TOKEN"))
+    enforce_rate_limit(f"device:{client_ip}", limit=120)
+
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.execute(
+                "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
+                (entry_id, payload.device_id, payload.category, payload.data, client_ip),
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"status": "error", "message": f"Database write failed: {str(e)}"}
+        )
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+    timestamp_iso = datetime.now(timezone.utc).isoformat()
+    
+    notification_event = {
+        "type": "esp32_data",
+        "id": entry_id,
+        "device_id": payload.device_id,
+        "category": payload.category,
+        "data": payload.data,
+        "client_ip": client_ip,
+        "timestamp": timestamp_iso,
+        "latency_ms": duration_ms
+    }
+
+    event_str = json.dumps(notification_event)
+    for q in list(subscribers):
+        try:
+            q.put_nowait(event_str)
+        except asyncio.QueueFull:
+            subscribers.discard(q)
+
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [201 INGEST] Device:{payload.device_id} | Cat:{payload.category} | IP:{client_ip} | Latency:{duration_ms}ms")
+    print(f"       [Payload Data]: {payload.data}")
+
+    return {
+        "status": "success",
+        "message": "Data received and processed",
+        "entry_id": entry_id,
+        "device_id": payload.device_id,
+        "received_at": timestamp_iso,
+        "broadcast_subscribers": len(subscribers),
+    }
+
+@router.get("/api/v1/device/data", summary="Query Device Records & Voice Summary")
+def query_device_data(
+    request: Request,
+    category: Optional[str] = Query(None, description="Filter by category"),
+    device_id: Optional[str] = Query(None, description="Filter by device ID"),
+    limit: int = Query(1, ge=1, le=500, description="Number of recent records"),
+):
+    """Fetches device records with natural voice summary."""
+    require_dashboard_session(request)
+    query = "SELECT id, device_id, category, payload_data, client_ip, created_at FROM telemetry_logs WHERE 1=1"
+    params = []
+
+    if device_id:
+        query += " AND device_id = ?"
+        params.append(device_id)
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+
+    formatted_data = []
+    for r in rows:
+        formatted_data.append({
+            "id": r["id"],
+            "device_id": r["device_id"],
+            "category": r["category"],
+            "payload": r["payload_data"],
+            "payload_data": r["payload_data"],
+            "client_ip": r["client_ip"],
+            "created_at": r["created_at"],
+        })
+
+    if formatted_data:
+        latest = formatted_data[0]
+        cat_name = latest["category"].replace("_", " ")
+        summary = f"Latest {cat_name} is {latest['payload']} recorded from {latest['device_id']}"
+    else:
+        summary = "No telemetry data found for the requested criteria"
+
+    return {
+        "status": "success",
+        "count": len(formatted_data),
+        "data": formatted_data,
+        "results": formatted_data,
+        "summary": summary,
+    }
+
+@router.delete("/api/v1/device/data", summary="Clear Device Telemetry Records")
+def clear_device_data(
+    request: Request,
+    category: Optional[str] = Query(None, description="Filter by category"),
+    device_id: Optional[str] = Query(None, description="Filter by device ID"),
+):
+    """Clears all or filtered telemetry logs."""
+    require_dashboard_session(request)
+    query = "DELETE FROM telemetry_logs WHERE 1=1"
+    params = []
+
+    if device_id:
+        query += " AND device_id = ?"
+        params.append(device_id)
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute(query, params)
+        deleted_count = res.rowcount
+
+    return {
+        "status": "success",
+        "message": f"Successfully deleted {deleted_count} record(s)",
+        "deleted_count": deleted_count,
+    }
+
+@router.delete("/api/v1/device/data/{entry_id}", summary="Delete Single Device Telemetry Record")
+def delete_single_device_data(entry_id: str, request: Request):
+    """Deletes a single telemetry record by ID."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute("DELETE FROM telemetry_logs WHERE id = ?", (entry_id,))
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Telemetry record not found")
+
+    return {
+        "status": "success",
+        "message": "Record deleted successfully",
+        "entry_id": entry_id,
+    }
+
+@router.get("/api/v1/device/stats", summary="Telemetry Fleet Statistics")
+def get_device_stats(request: Request):
+    """Aggregates fleet counts, unique devices, and latest transmission."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        total_records = conn.execute("SELECT COUNT(*) AS total FROM telemetry_logs").fetchone()["total"]
+        unique_devices = [r["device_id"] for r in conn.execute("SELECT DISTINCT device_id FROM telemetry_logs").fetchall()]
+        categories = [dict(r) for r in conn.execute("SELECT category, COUNT(*) as count FROM telemetry_logs GROUP BY category").fetchall()]
+        latest_entry = conn.execute("SELECT created_at, device_id, payload_data FROM telemetry_logs ORDER BY created_at DESC LIMIT 1").fetchone()
+
+    return {
+        "status": "success",
+        "total_records": total_records,
+        "unique_devices": unique_devices,
+        "categories": categories,
+        "latest_transmission": dict(latest_entry) if latest_entry else None,
+    }
