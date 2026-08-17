@@ -323,7 +323,7 @@ async def ai_chat(req: ChatRequest):
 
     if is_gemini:
         payload = {
-            "system_instruction": {
+            "systemInstruction": {
                 "parts": [{
                     "text": "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. Answer naturally, informatively, and concisely in 1-3 sentences in English."
                 }]
