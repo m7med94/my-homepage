@@ -332,10 +332,12 @@ function bindEvents() {
   });
 
   // Export Data JSON
-  document.getElementById('btnExportData').addEventListener('click', exportTelemetrySnapshot);
+  const btnExport = document.getElementById('btnExportData');
+  if (btnExport) btnExport.addEventListener('click', exportTelemetrySnapshot);
 
   // Simulate Anomaly Spike
-  document.getElementById('btnTriggerAlert').addEventListener('click', triggerSimulatedSpike);
+  const btnAlert = document.getElementById('btnTriggerAlert');
+  if (btnAlert) btnAlert.addEventListener('click', triggerSimulatedSpike);
 
   // Clear Event Logs
   document.getElementById('btnClearLogs').addEventListener('click', () => {
