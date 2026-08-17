@@ -273,10 +273,42 @@ async def ai_chat(req: ChatRequest):
             "telemetry_included": bool(telemetry_context)
         }
 
+# Cached active model to eliminate repeated discovery network overhead
+ACTIVE_GEMINI_MODEL: Optional[str] = None
+
+# 9. POST AI Assistant Chat Endpoint (Fast Cached Server-Side Execution)
+@app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Fast Cached Execution")
+async def ai_chat(req: ChatRequest):
+    global ACTIVE_GEMINI_MODEL
+    api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
+
+    telemetry_context = ""
+    if req.include_telemetry:
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 5").fetchall()
+                if logs:
+                    telemetry_context = "\n[Live Telemetry Context]:\n" + "\n".join(
+                        [f"- {r['device_id']} [{r['category']}]: {r['payload_data']}" for r in logs]
+                    )
+        except Exception:
+            pass
+
+    system_instruction = (
+        "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
+        "Answer concisely in 1-3 sentences in English. Do NOT output internal thoughts, reasoning steps, or notes."
+    )
+
+    if not api_key:
+        return {
+            "status": "warning",
+            "reply": "⚠️ Server AI Key not set in `.env`.",
+        }
+
     def clean_reply(text: str) -> str:
         text = text.strip()
         if "* User Role:" in text or "* Persona:" in text or "* Thoughts:" in text:
-            # Extract final intended message
             lines = [l.strip() for l in text.split("\n") if l.strip()]
             for l in reversed(lines):
                 if l.startswith('"') and l.endswith('"'):
@@ -285,7 +317,6 @@ async def ai_chat(req: ChatRequest):
                     return l
         return text
 
-    # If Gemini API Key (starts with AIza, AQ., or GEMINI_API_KEY set)
     is_gemini = (
         api_key.startswith("AIza")
         or api_key.startswith("AQ.")
@@ -294,64 +325,61 @@ async def ai_chat(req: ChatRequest):
     )
 
     if is_gemini:
-        # Dynamically discover supported models for this specific API key
-        discovered_models = []
-        try:
-            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            list_req = urllib.request.Request(list_url, method="GET")
-            with urllib.request.urlopen(list_req, timeout=10) as list_res:
-                list_data = json.loads(list_res.read().decode("utf-8"))
-                for m in list_data.get("models", []):
-                    if "generateContent" in m.get("supportedGenerationMethods", []):
-                        discovered_models.append(m["name"].replace("models/", ""))
-        except Exception:
-            pass
-
-        # Fallback candidate list if list API is restricted
-        candidate_models = discovered_models or [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-001",
-            "gemini-1.5-flash-002",
-            "gemini-1.5-pro",
-            "gemini-1.5-pro-001",
-            "gemini-2.0-flash-exp",
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-pro"
-        ]
-        
         payload = {
             "contents": [{
                 "parts": [{
-                    "text": f"{system_instruction}\n{telemetry_context}\n\nUser Question: {req.message}"
+                    "text": f"{system_instruction}\n{telemetry_context}\n\nQuestion: {req.message}"
                 }]
             }],
             "generationConfig": {
-                "temperature": 0.6,
-                "maxOutputTokens": 800
+                "temperature": 0.4,
+                "maxOutputTokens": 250
             }
         }
         req_data = json.dumps(payload).encode("utf-8")
-        last_error = ""
+
+        def run_gemini_request(model_name: str):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req_obj, timeout=12) as response:
+                res_body = json.loads(response.read().decode("utf-8"))
+                if "candidates" in res_body and res_body["candidates"]:
+                    return res_body["candidates"][0]["content"]["parts"][0]["text"]
+            return None
+
+        # 1. Fast path: If active model is already cached, execute directly (0 extra network roundtrips)
+        if ACTIVE_GEMINI_MODEL:
+            try:
+                raw_reply = await asyncio.to_thread(run_gemini_request, ACTIVE_GEMINI_MODEL)
+                if raw_reply:
+                    return {"status": "success", "reply": clean_reply(raw_reply), "model": ACTIVE_GEMINI_MODEL}
+            except Exception:
+                ACTIVE_GEMINI_MODEL = None  # Reset cache on error and re-discover
+
+        # 2. Discovery path: Try priority models fast
+        candidate_models = [
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-001",
+            "gemini-1.5-flash-002",
+            "gemini-2.0-flash-exp",
+            "gemini-2.5-flash",
+            "gemini-pro"
+        ]
 
         for model_name in candidate_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
-                req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(req_obj, timeout=30) as response:
-                    res_body = json.loads(response.read().decode("utf-8"))
-                    if "candidates" in res_body and res_body["candidates"]:
-                        raw_reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
-                        return {"status": "success", "reply": clean_reply(raw_reply), "model": model_name}
+                raw_reply = await asyncio.to_thread(run_gemini_request, model_name)
+                if raw_reply:
+                    ACTIVE_GEMINI_MODEL = model_name  # Cache for all future calls
+                    return {"status": "success", "reply": clean_reply(raw_reply), "model": model_name}
             except urllib.error.HTTPError as he:
-                last_error = he.read().decode("utf-8")
                 if he.code in (400, 404):
                     continue
-                return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_error}"}
+                return {"status": "error", "reply": f"Gemini API Error ({he.code})"}
             except Exception as e:
-                return {"status": "error", "reply": f"AI Gateway Error: {str(e)}"}
+                return {"status": "error", "reply": f"AI Error: {str(e)}"}
 
-        return {"status": "error", "reply": f"Gemini Model Discovery Failed: {last_error}"}
+        return {"status": "error", "reply": "Could not connect to Gemini model."}
 
     # Default / OpenAI / Groq Compatible
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
