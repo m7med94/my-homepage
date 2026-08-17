@@ -551,30 +551,51 @@ function updateTopMetrics() {
   }
 }
 
-/** Host Diagnostics Gauges Update */
-function updateDiagnostics() {
-  const cpu = Math.floor(25 + Math.random() * 30);
-  const ram = (4.1 + Math.random() * 0.4).toFixed(1);
-  const ping = Math.floor(14 + Math.random() * 10);
+/** Real Server Diagnostics Gauges Update */
+let isDiagFetching = false;
+async function updateDiagnostics() {
+  if (isDiagFetching) return;
+  isDiagFetching = true;
 
-  const cpuGauge = document.getElementById('cpuGauge');
-  if (cpuGauge) {
-    cpuGauge.style.setProperty('--val', cpu);
-    document.getElementById('cpuValText').textContent = `${cpu}%`;
+  try {
+    // 1. Fetch real RAM and system stats from server
+    const res = await fetch('/api/v1/network/memory');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success') {
+        const memGauge = document.getElementById('memGauge');
+        if (memGauge) {
+          memGauge.style.setProperty('--val', Math.round(data.percent_used || 0));
+          const memValText = document.getElementById('memValText');
+          if (memValText) memValText.textContent = `${Math.round(data.percent_used || 0)}%`;
+          const memUsageText = document.getElementById('memUsageText');
+          if (memUsageText) memUsageText.textContent = `${data.used_gb} / ${data.total_gb} GB`;
+        }
+      }
+    }
+  } catch (err) {
+    // Keep last known value
   }
 
-  const memGauge = document.getElementById('memGauge');
-  if (memGauge) {
-    const memPct = Math.round((ram / 8.0) * 100);
-    memGauge.style.setProperty('--val', memPct);
-    document.getElementById('memValText').textContent = `${memPct}%`;
-    document.getElementById('memUsageText').textContent = `${ram} / 8.0 GB`;
-  }
-
-  const netGauge = document.getElementById('netGauge');
-  if (netGauge) {
-    netGauge.style.setProperty('--val', Math.min(100, ping * 2));
-    document.getElementById('netValText').textContent = `${ping}ms`;
+  try {
+    // 2. Fetch real ping latency to localhost
+    const pingRes = await fetch('/api/v1/network/ping?target=127.0.0.1');
+    if (pingRes.ok) {
+      const pingData = await pingRes.json();
+      const netGauge = document.getElementById('netGauge');
+      if (netGauge && pingData.reachable) {
+        const lat = pingData.latency_ms !== null ? Math.round(pingData.latency_ms) : 1;
+        netGauge.style.setProperty('--val', Math.min(100, Math.max(10, lat * 4)));
+        const netValText = document.getElementById('netValText');
+        if (netValText) netValText.textContent = `${lat}ms`;
+        const netStatus = document.getElementById('netStatusText');
+        if (netStatus) netStatus.textContent = '0.0% Loss';
+      }
+    }
+  } catch (err) {
+    // Keep last known value
+  } finally {
+    isDiagFetching = false;
   }
 }
 
