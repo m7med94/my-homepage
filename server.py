@@ -15,11 +15,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+# Automatic local .env loader (without requiring external dependencies)
+def load_env():
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key.strip()] = val.strip().strip('"').strip("'")
+
+load_env()
+
 # 1. Initialize FastAPI Application
 app = FastAPI(
     title="ESP32 AI Voice Assistant Telemetry Gateway",
     description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices with live SSE notifications and Server-Side AI Copilot.",
-    version="1.2.0",
+    version="1.2.1",
 )
 
 # 2. CORS Middleware Configuration
@@ -249,19 +262,26 @@ async def ai_chat(req: ChatRequest):
 
     system_instruction = (
         "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer concisely, smartly, and informatively. If asked about sensor readings or ESP32 voice transmissions, "
+        "Answer concisely, smartly, and informatively in English. If asked about sensor readings or ESP32 voice transmissions, "
         "refer to the live telemetry logs provided below."
     )
 
     if not api_key:
         return {
             "status": "warning",
-            "reply": "⚠️ **Server AI Key Not Set Yet.**\n\nPlease set your API key on your server environment (e.g. `export AI_API_KEY='your-key'` or `export GEMINI_API_KEY='your-key'`), then restart `server.py`.\n\nHere is your local database status:\n" + (telemetry_context or "No telemetry records yet."),
+            "reply": "⚠️ **Server AI Key Not Configured Yet.**\n\nPlease add your API key into `/home/m7med_am/my-homepage/.env` as `GEMINI_API_KEY=\"...\"`, then restart `server.py`.\n\nHere is your local database status:\n" + (telemetry_context or "No telemetry records yet."),
             "telemetry_included": bool(telemetry_context)
         }
 
-    # If Gemini API Key
-    if api_key.startswith("AIza") or os.getenv("GEMINI_API_KEY") or (os.getenv("AI_API_KEY") and len(api_key) == 39):
+    # If Gemini API Key (starts with AIza, AQ., or GEMINI_API_KEY set)
+    is_gemini = (
+        api_key.startswith("AIza")
+        or api_key.startswith("AQ.")
+        or os.getenv("GEMINI_API_KEY") is not None
+        or (os.getenv("AI_API_KEY") and len(api_key) in (39, 52, 53))
+    )
+
+    if is_gemini:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         payload = {
             "contents": [{
@@ -277,6 +297,9 @@ async def ai_chat(req: ChatRequest):
                 res_body = json.loads(response.read().decode("utf-8"))
                 reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
                 return {"status": "success", "reply": reply}
+        except urllib.error.HTTPError as he:
+            err_text = he.read().decode("utf-8")
+            return {"status": "error", "reply": f"Gemini API Error ({he.code}): {err_text}"}
         except Exception as e:
             return {"status": "error", "reply": f"AI Gateway Error: {str(e)}"}
 
