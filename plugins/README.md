@@ -12,8 +12,8 @@ Any `.py` file placed in this `plugins/` directory is automatically discovered a
 ```python
 def handle_intent(instruction: str, context: str = "") -> str | None:
     text = instruction.lower()
-    if "battery life" in text or "battery tip" in text:
-        return "Tip: Keep your ESP32 between 20% and 80% charge for optimal battery health."
+    if "ping" in text or "are you online" in text:
+        return "The server agent is fully operational and responsive."
     return None
 ```
 No compiling, no C++ coding, and zero ESP32 flashing required!

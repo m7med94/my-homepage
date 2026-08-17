@@ -9,8 +9,5 @@ def handle_intent(instruction: str, context: str = "") -> Optional[str]:
     
     if "system architecture" in text or "how do you work" in text:
         return "I am powered by a thin ESP32 hardware client connected to a Python server-side agent hub with SQLite and Gemini AI."
-    
-    if "battery tip" in text or "battery advice" in text:
-        return "Tip: For maximum lifespan of lithium batteries, avoid keeping the device at 100% or 0% charge for prolonged periods."
 
     return None
