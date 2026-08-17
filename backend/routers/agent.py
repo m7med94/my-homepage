@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Query, status
 from pydantic import BaseModel, Field
 
 from backend.config import (
