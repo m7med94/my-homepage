@@ -30,6 +30,7 @@
 
 #define BACKEND_SERVER_URL "http://136.64.148.228/api/v1/device/data"
 #define BACKEND_TODOS_URL "http://136.64.148.228/api/v1/todos"
+#define BACKEND_MUSIC_VOICE_URL "http://136.64.148.228/api/v1/music/voice-action"
 #define BACKEND_SERVER_TIMEOUT_MS 4000
 
 #endif  // _BOARD_CONFIG_H_

@@ -134,7 +134,25 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_todo_completed ON todos (completed);")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS playlists (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS playlist_tracks (
+                id TEXT PRIMARY KEY,
+                playlist_id TEXT NOT NULL,
+                track_filename TEXT NOT NULL,
+                track_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_playlist_id ON playlist_tracks (playlist_id);")
 
         # Seed sample todos if table is freshly created and empty
         cur = conn.cursor()
@@ -148,6 +166,14 @@ def init_db():
             conn.executemany(
                 "INSERT INTO todos (id, text, priority, completed) VALUES (?, ?, ?, ?)",
                 sample_todos,
+            )
+
+        # Seed a default favorites playlist if empty
+        cur.execute("SELECT COUNT(*) FROM playlists")
+        if cur.fetchone()[0] == 0:
+            conn.execute(
+                "INSERT INTO playlists (id, name, description) VALUES (?, ?, ?)",
+                ("favs", "Favorites", "Top rotation tracks & ambient audio")
             )
 
 init_db()
@@ -167,6 +193,13 @@ class TodoUpdate(BaseModel):
     text: Optional[str] = Field(None, min_length=1, max_length=1000)
     priority: Optional[str] = Field(None)
     completed: Optional[bool] = Field(None)
+
+class PlaylistCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120, description="Playlist title")
+    description: Optional[str] = Field("", max_length=500)
+
+class PlaylistAddTrack(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt")
@@ -703,10 +736,212 @@ def delete_music_file(filename: str, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
 
+    # Clean up playlist references to deleted track
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.execute("DELETE FROM playlist_tracks WHERE track_filename = ?", (clean_name,))
+    except Exception:
+        pass
+
     return {"status": "success", "message": f"Track '{clean_name}' deleted successfully"}
 
-# 12. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
-@app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry & Task Awareness")
+# 13. Playlist Management Endpoints
+@app.get("/api/v1/playlists", summary="List All Playlists")
+def list_playlists(request: Request):
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        p_rows = conn.execute("SELECT id, name, description, created_at FROM playlists ORDER BY name ASC").fetchall()
+        
+        playlists = []
+        for p in p_rows:
+            t_rows = conn.execute(
+                "SELECT track_filename, track_order FROM playlist_tracks WHERE playlist_id = ? ORDER BY track_order ASC",
+                (p["id"],)
+            ).fetchall()
+            
+            tracks = []
+            for t in t_rows:
+                fname = t["track_filename"]
+                fpath = os.path.join(MUSIC_DIR, fname)
+                if os.path.exists(fpath):
+                    tracks.append({
+                        "filename": fname,
+                        "title": os.path.splitext(fname)[0],
+                        "url": f"/music/{urllib.parse.quote(fname)}"
+                    })
+
+            playlists.append({
+                "id": p["id"],
+                "name": p["name"],
+                "description": p["description"],
+                "created_at": p["created_at"],
+                "track_count": len(tracks),
+                "tracks": tracks
+            })
+
+    return {"status": "success", "count": len(playlists), "playlists": playlists}
+
+@app.post("/api/v1/playlists", status_code=status.HTTP_201_CREATED, summary="Create Playlist")
+def create_playlist(payload: PlaylistCreate, request: Request):
+    require_dashboard_session(request)
+    p_id = "pl_" + uuid.uuid4().hex[:10]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.execute(
+            "INSERT INTO playlists (id, name, description, created_at) VALUES (?, ?, ?, ?)",
+            (p_id, payload.name.strip(), payload.description.strip(), now_iso)
+        )
+    return {"status": "success", "id": p_id, "name": payload.name.strip()}
+
+@app.post("/api/v1/playlists/{playlist_id}/tracks", summary="Add Track to Playlist")
+def add_track_to_playlist(playlist_id: str, payload: PlaylistAddTrack, request: Request):
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        # Verify playlist exists
+        p = conn.execute("SELECT id FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+        if not p:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+            
+        clean_name = os.path.basename(payload.filename)
+        # Verify track exists on disk
+        if not os.path.exists(os.path.join(MUSIC_DIR, clean_name)):
+            raise HTTPException(status_code=404, detail="Audio file not found on server")
+
+        entry_id = uuid.uuid4().hex[:12]
+        cur_count = conn.execute("SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,)).fetchone()[0]
+        conn.execute(
+            "INSERT INTO playlist_tracks (id, playlist_id, track_filename, track_order) VALUES (?, ?, ?, ?)",
+            (entry_id, playlist_id, clean_name, cur_count)
+        )
+    return {"status": "success", "message": f"Added '{clean_name}' to playlist"}
+
+@app.delete("/api/v1/playlists/{playlist_id}/tracks/{filename}", summary="Remove Track from Playlist")
+def remove_track_from_playlist(playlist_id: str, filename: str, request: Request):
+    require_dashboard_session(request)
+    clean_name = os.path.basename(filename)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.execute(
+            "DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_filename = ?",
+            (playlist_id, clean_name)
+        )
+    return {"status": "success", "message": f"Removed '{clean_name}' from playlist"}
+
+@app.delete("/api/v1/playlists/{playlist_id}", summary="Delete Playlist")
+def delete_playlist(playlist_id: str, request: Request):
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))
+        res = conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+    return {"status": "success", "message": "Playlist deleted"}
+
+# 14. Voice Assistant Music Resolver (For XiaoZhi ESP32 & ServerAI)
+@app.get("/api/v1/music/voice-action", summary="Voice-Triggered Music Resolver for ESP32")
+def resolve_voice_music(
+    request: Request,
+    query: Optional[str] = Query("", description="Song title, playlist, or keyword (e.g., 'relax', 'rock', 'random')"),
+    action: Optional[str] = Query("play", description="Action: play, list, random"),
+):
+    require_dashboard_session(request)
+    
+    # Scan current library
+    available_tracks = []
+    if os.path.exists(MUSIC_DIR):
+        for f in sorted(os.listdir(MUSIC_DIR)):
+            if os.path.splitext(f)[1].lower() in ALLOWED_AUDIO_EXTENSIONS:
+                available_tracks.append({
+                    "filename": f,
+                    "title": os.path.splitext(f)[0],
+                    "url": f"/music/{urllib.parse.quote(f)}"
+                })
+
+    if not available_tracks:
+        return {
+            "status": "warning",
+            "found": False,
+            "summary": "Your music vault is currently empty. Please upload some songs to your server first.",
+            "voice_summary": "Your music vault is currently empty. Please upload some songs to your server first.",
+        }
+
+    q = (query or "").strip().lower()
+
+    if action == "list" or "what" in q or "list" in q or "songs" in q:
+        titles = [t["title"] for t in available_tracks[:5]]
+        count = len(available_tracks)
+        summary = f"You have {count} track{'s' if count > 1 else ''} in your library, including: {', '.join(titles)}."
+        return {
+            "status": "success",
+            "found": True,
+            "summary": summary,
+            "voice_summary": summary,
+            "tracks": available_tracks
+        }
+
+    # If asking for random or no specific query
+    if not q or "random" in q or "anything" in q or "shuffle" in q or q == "music":
+        selected = available_tracks[secrets.randbelow(len(available_tracks))]
+        summary = f"Playing {selected['title']}."
+        return {
+            "status": "success",
+            "found": True,
+            "action": "play",
+            "summary": summary,
+            "voice_summary": summary,
+            "track": selected,
+            "url": selected["url"],
+            "filename": selected["filename"]
+        }
+
+    # Match playlist name first
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        p_match = conn.execute("SELECT id, name FROM playlists WHERE lower(name) LIKE ?", (f"%{q}%",)).fetchone()
+        if p_match:
+            t_rows = conn.execute("SELECT track_filename FROM playlist_tracks WHERE playlist_id = ? ORDER BY track_order ASC", (p_match["id"],)).fetchall()
+            valid_p_tracks = [t["track_filename"] for t in t_rows if os.path.exists(os.path.join(MUSIC_DIR, t["track_filename"]))]
+            if valid_p_tracks:
+                first_song = valid_p_tracks[0]
+                summary = f"Playing {p_match['name']} playlist starting with {os.path.splitext(first_song)[0]}."
+                return {
+                    "status": "success",
+                    "found": True,
+                    "action": "play_playlist",
+                    "playlist": p_match["name"],
+                    "summary": summary,
+                    "voice_summary": summary,
+                    "track": {"filename": first_song, "title": os.path.splitext(first_song)[0], "url": f"/music/{urllib.parse.quote(first_song)}"},
+                    "url": f"/music/{urllib.parse.quote(first_song)}"
+                }
+
+    # Fuzzy match track titles
+    matched = None
+    for t in available_tracks:
+        if q in t["title"].lower() or t["title"].lower() in q:
+            matched = t
+            break
+
+    if not matched:
+        # Fallback to closest track
+        matched = available_tracks[0]
+        summary = f"Could not find an exact match for {query}. Playing {matched['title']}."
+    else:
+        summary = f"Playing {matched['title']}."
+
+    return {
+        "status": "success",
+        "found": True,
+        "action": "play",
+        "summary": summary,
+        "voice_summary": summary,
+        "track": matched,
+        "url": matched["url"],
+        "filename": matched["filename"]
+    }
+
+# 15. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
+@app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry, Task & Music Awareness")
 async def ai_chat(req: ChatRequest, request: Request):
     global ACTIVE_GEMINI_MODEL
     require_dashboard_session(request)
@@ -716,6 +951,7 @@ async def ai_chat(req: ChatRequest, request: Request):
 
     telemetry_context = ""
     todo_context = ""
+    music_context = ""
     if req.include_telemetry:
         try:
             with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
@@ -733,12 +969,18 @@ async def ai_chat(req: ChatRequest, request: Request):
                     )
                 else:
                     todo_context = "\n[Current User To-Do List]: No pending tasks."
+
+            # Music files context
+            if os.path.exists(MUSIC_DIR):
+                m_files = [os.path.splitext(f)[0] for f in sorted(os.listdir(MUSIC_DIR)) if os.path.splitext(f)[1].lower() in ALLOWED_AUDIO_EXTENSIONS]
+                if m_files:
+                    music_context = f"\n[Available Music Library on Server]: {', '.join(m_files[:10])}"
         except Exception:
             pass
 
     system_instruction = (
         "You are SensorsHub ServerAI for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs and the user's to-do list when asked."
+        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs, to-do items, and music library when asked."
     )
 
     if not api_key:

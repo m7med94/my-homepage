@@ -258,6 +258,29 @@ private:
                 std::string priority = properties["priority"].value<std::string>();
                 return AddTodoToServer(text, priority);
             });
+
+        // Tool 7: Play music or playlist from the server music vault
+        mcp.AddTool(
+            "self.music.play",
+            "Search and play a music track or playlist from the server music vault. "
+            "Use this whenever the user asks to play music, play a song, play a playlist (e.g. 'favorites'), or play something random.",
+            PropertyList({
+                Property("query", kPropertyTypeString, std::string("random"))
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                std::string query = properties["query"].value<std::string>();
+                return ResolveVoiceMusicAction(query, "play");
+            });
+
+        // Tool 8: List available music & playlists in the server vault
+        mcp.AddTool(
+            "self.music.list",
+            "List available music tracks and playlists stored on the server. "
+            "Use this whenever the user asks 'what music do you have', 'what songs do I have', or 'list my playlists'.",
+            PropertyList(),
+            [this](const PropertyList&) -> ReturnValue {
+                return ResolveVoiceMusicAction("", "list");
+            });
     }
 
     bool SendDataToServer(const std::string& data, const std::string& category) {
@@ -448,6 +471,74 @@ private:
         } else {
             return "Failed to save task to server.";
         }
+    }
+
+    std::string ResolveVoiceMusicAction(const std::string& query, const std::string& action) {
+        auto network = GetNetwork();
+        if (!network) {
+            return "Network connection unavailable.";
+        }
+
+        auto http = network->CreateHttp(3);
+        if (!http) {
+            return "Internal HTTP error.";
+        }
+
+        std::string url = BACKEND_MUSIC_VOICE_URL;
+        url += "?action=" + action;
+        if (!query.empty()) {
+            url += "&query=" + query;
+        }
+
+        http->SetTimeout(BACKEND_SERVER_TIMEOUT_MS);
+        ESP_LOGI(TAG, "Resolving voice music action via: %s", url.c_str());
+
+        if (!http->Open("GET", url)) {
+            ESP_LOGE(TAG, "Failed to connect to music voice endpoint at %s", url.c_str());
+            return "Could not connect to the music server.";
+        }
+
+        int status_code = http->GetStatusCode();
+        if (status_code < 200 || status_code >= 300) {
+            ESP_LOGE(TAG, "Server returned error code %d for music", status_code);
+            http->Close();
+            return "Failed to fetch music information from server.";
+        }
+
+        std::string response_body = http->ReadAll();
+        http->Close();
+
+        if (response_body.empty()) {
+            return "No response from music server.";
+        }
+
+        cJSON* root = cJSON_Parse(response_body.c_str());
+        if (root) {
+            cJSON* voice_summary = cJSON_GetObjectItem(root, "voice_summary");
+            if (cJSON_IsString(voice_summary) && voice_summary->valuestring != nullptr) {
+                std::string summary_text = voice_summary->valuestring;
+                cJSON_Delete(root);
+                return summary_text;
+            }
+            cJSON* summary = cJSON_GetObjectItem(root, "summary");
+            if (cJSON_IsString(summary) && summary->valuestring != nullptr) {
+                std::string summary_text = summary->valuestring;
+                cJSON_Delete(root);
+                return summary_text;
+            }
+            cJSON* track = cJSON_GetObjectItem(root, "track");
+            if (track) {
+                cJSON* title = cJSON_GetObjectItem(track, "title");
+                if (cJSON_IsString(title) && title->valuestring != nullptr) {
+                    std::string res = "Playing " + std::string(title->valuestring);
+                    cJSON_Delete(root);
+                    return res;
+                }
+            }
+            cJSON_Delete(root);
+        }
+
+        return response_body;
     }
 
 public:
