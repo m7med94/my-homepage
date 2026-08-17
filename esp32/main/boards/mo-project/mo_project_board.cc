@@ -266,7 +266,19 @@ private:
                 return DispatchInstructionToServer("add " + text + " with " + priority + " priority", "todo");
             });
 
-        // Tool 8: Send / Read generic telemetry data
+        // Tool 8: Delete a task from the To-Do list on the server
+        mcp.AddTool(
+            "self.todo.delete_item",
+            "Delete or remove a task or item from the user's to-do list on the server.",
+            PropertyList({
+                Property("text", kPropertyTypeString)
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                std::string text = properties["text"].value<std::string>();
+                return DispatchInstructionToServer("delete " + text, "todo");
+            });
+
+        // Tool 9: Send / Read generic telemetry data
         mcp.AddTool(
             "self.server.send_data",
             "Send custom data, logs, alerts, or events to the external server backend.",

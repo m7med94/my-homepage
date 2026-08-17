@@ -315,6 +315,30 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
                 reply_msg = f"Marked task '{row['text']}' as completed."
                 return {"status": "success", "action": "todo_complete", "reply": reply_msg, "summary": reply_msg}
 
+    # D) Delete / Remove task
+    if any(k in lower_inst for k in ["delete task", "remove task", "delete item", "remove item", "delete to-do", "remove to-do", "delete from my todo", "remove from my todo", "delete from todo", "remove from todo"]) or (lower_inst.startswith("delete ") and ("task" in lower_inst or "todo" in lower_inst or "item" in lower_inst or "milk" in lower_inst or "bread" in lower_inst)) or lower_inst.startswith("delete "):
+        del_match = re.search(r"^(?:delete|remove)\s+(?:task|item|to-?do)?\s*(?:named|called)?\s*:?\s*(.+)", lower_inst)
+        task_query = del_match.group(1).strip() if del_match else lower_inst
+        task_query = re.sub(r"\s+from\s+(?:my\s+)?(?:to-?do\s+list|tasks|list)\b.*", "", task_query, flags=re.IGNORECASE).strip()
+        task_query = re.sub(r"^(?:task|item|to-?do)\s*", "", task_query, flags=re.IGNORECASE).strip()
+        
+        if task_query:
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT id, text FROM todos WHERE text LIKE ? ORDER BY created_at DESC LIMIT 1", (f"%{task_query}%",)).fetchone()
+                if row:
+                    conn.execute("DELETE FROM todos WHERE id = ?", (row["id"],))
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    notification = {"type": "todo_deleted", "id": row["id"], "text": row["text"], "timestamp": now_iso}
+                    for q in list(subscribers):
+                        try: q.put_nowait(json.dumps(notification))
+                        except Exception: subscribers.discard(q)
+                    reply_msg = f"Deleted '{row['text']}' from your to-do list."
+                    return {"status": "success", "action": "todo_delete", "reply": reply_msg, "summary": reply_msg, "data": {"id": row["id"], "text": row["text"]}}
+                else:
+                    reply_msg = f"Could not find any task matching '{task_query}' to delete."
+                    return {"status": "warning", "action": "todo_delete", "reply": reply_msg, "summary": reply_msg}
+
     # 3. Music Vault Intents
     if any(k in lower_inst for k in ["play music", "play song", "play track", "play playlist", "put on music", "play something"]):
         query = re.sub(r"^(play\s+music|play\s+song|play\s+track|play\s+playlist|put\s+on\s+music|play\s+something)\s*", "", lower_inst).strip()
