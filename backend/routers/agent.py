@@ -524,3 +524,63 @@ def send_message_to_esp32(req: dict, request: Request):
     audio_url = req.get("audio_url")
     queue_message_for_esp32(text, dev_id, audio_url)
     return {"status": "success", "message": "Message queued for ESP32 bot"}
+
+@router.post("/api/v1/agent/speak", summary="Broadcast Speech & Screen Message to ESP32 Bot")
+async def broadcast_speech_to_bot(req: dict, request: Request):
+    """
+    Instantly broadcasts an announcement to the ESP32 bot and web dashboard.
+    Wakes up the screen, plays a chime, and logs the announcement.
+    """
+    require_dashboard_session(request)
+    text = (req.get("text") or req.get("message") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing 'text' parameter")
+
+    dev_id = req.get("device_id", "mo-project-c3")
+    emotion = req.get("emotion", "happy")
+    entry_id = str(uuid.uuid4())
+    ts_iso = datetime.now(timezone.utc).isoformat()
+
+    # 1. Record in telemetry logs
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.execute(
+                "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
+                (entry_id, dev_id, "speech_broadcast", text, request.client.host if request.client else "127.0.0.1"),
+            )
+    except Exception:
+        pass
+
+    # 2. Push via SSE to all active web dashboards
+    notification = {
+        "type": "esp32_data",
+        "id": entry_id,
+        "device_id": dev_id,
+        "category": "voice_announcement",
+        "data": text,
+        "emotion": emotion,
+        "timestamp": ts_iso,
+    }
+    event_str = json.dumps(notification)
+    for q in list(subscribers):
+        try:
+            q.put_nowait(event_str)
+        except Exception:
+            subscribers.discard(q)
+
+    # 3. Push over hardware WebSocket channel if connected
+    try:
+        from backend.routers.telemetry import push_message_to_device
+        await push_message_to_device(dev_id, text, emotion)
+    except Exception:
+        pass
+
+    # 4. Queue for hardware listener
+    queue_message_for_esp32(text, dev_id)
+
+    return {
+        "status": "success",
+        "message": f"Broadcasted speech to {dev_id}: {text}",
+        "entry_id": entry_id,
+        "timestamp": ts_iso,
+    }

@@ -997,6 +997,62 @@ async function runNetworkVoiceQuery(queryText) {
   }
 }
 
+/** Broadcast Speech to ESP32 Bot & Screen */
+async function sendBotSpeech(text) {
+  const cleanText = (text || '').trim();
+  if (!cleanText) return;
+
+  logEvent(`Broadcasting speech to ESP32: "${cleanText}"`, 'info');
+  showToast(`Broadcasting to ESP32: "${cleanText.substring(0, 35)}..."`, 'info');
+  playNotificationChime();
+
+  const inputEl = document.getElementById('botBroadcastInput');
+  if (inputEl) inputEl.value = '';
+
+  try {
+    const res = await fetch('/api/v1/agent/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText, device_id: 'mo-project-c3', emotion: 'happy' }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      logEvent(`Broadcast sent: ${data.message}`, 'info');
+    }
+  } catch (err) {
+    console.error('Error broadcasting speech:', err);
+  }
+}
+
+// Setup Broadcast Speech Listeners
+function setupSpeechBroadcastListeners() {
+  const btnSend = document.getElementById('btnSendBotSpeech');
+  const inputEl = document.getElementById('botBroadcastInput');
+
+  if (btnSend && inputEl) {
+    btnSend.addEventListener('click', () => {
+      sendBotSpeech(inputEl.value);
+    });
+
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendBotSpeech(inputEl.value);
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-speak]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const msg = chip.getAttribute('data-speak');
+      if (msg) sendBotSpeech(msg);
+    });
+  });
+}
+
 // Start application
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', () => {
+  initApp();
+  setupSpeechBroadcastListeners();
+});
 
