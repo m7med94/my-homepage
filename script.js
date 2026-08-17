@@ -3,7 +3,7 @@
  * Advanced Real-Time Monitoring, Live ESP32 Audio/Visual Notifications & SSE Ingestion
  */
 
-// Initial Sensor Fleet (including ESP32 XiaoZhi Voice Node)
+// Initial Sensor Fleet (Standby State — populated by real hardware telemetry)
 let sensors = [
   {
     id: 1,
@@ -16,11 +16,11 @@ let sensors = [
     maxValue: 40,
     minNormal: 19,
     maxNormal: 26,
-    currentValue: 22.4,
-    status: 'online',
+    currentValue: '--',
+    status: 'standby',
     accentColor: '#38bdf8',
-    history: [21.8, 22.0, 22.1, 22.3, 22.2, 22.4, 22.5, 22.4],
-    lastUpdate: new Date(),
+    history: [],
+    lastUpdate: null,
   },
   {
     id: 2,
@@ -33,11 +33,11 @@ let sensors = [
     maxValue: 55,
     minNormal: 18,
     maxNormal: 32,
-    currentValue: 27.8,
-    status: 'online',
+    currentValue: '--',
+    status: 'standby',
     accentColor: '#f43f5e',
-    history: [26.5, 27.0, 27.2, 27.5, 27.6, 27.8, 27.7, 27.8],
-    lastUpdate: new Date(),
+    history: [],
+    lastUpdate: null,
   },
   {
     id: 3,
@@ -50,11 +50,11 @@ let sensors = [
     maxValue: 90,
     minNormal: 35,
     maxNormal: 65,
-    currentValue: 48.5,
-    status: 'online',
+    currentValue: '--',
+    status: 'standby',
     accentColor: '#38bdf8',
-    history: [46.0, 46.5, 47.0, 47.5, 48.0, 48.2, 48.5, 48.5],
-    lastUpdate: new Date(),
+    history: [],
+    lastUpdate: null,
   },
   {
     id: 4,
@@ -67,11 +67,11 @@ let sensors = [
     maxValue: 2000,
     minNormal: 350,
     maxNormal: 800,
-    currentValue: 420,
-    status: 'online',
+    currentValue: '--',
+    status: 'standby',
     accentColor: '#10b981',
-    history: [410, 412, 415, 418, 422, 420, 419, 420],
-    lastUpdate: new Date(),
+    history: [],
+    lastUpdate: null,
   },
   {
     id: 5,
@@ -84,11 +84,11 @@ let sensors = [
     maxValue: 4000,
     minNormal: 100,
     maxNormal: 2800,
-    currentValue: 640,
-    status: 'online',
+    currentValue: '--',
+    status: 'standby',
     accentColor: '#fbbf24',
-    history: [610, 625, 630, 638, 645, 640, 635, 640],
-    lastUpdate: new Date(),
+    history: [],
+    lastUpdate: null,
   },
   {
     id: 6,
@@ -101,11 +101,11 @@ let sensors = [
     maxValue: 1050,
     minNormal: 980,
     maxNormal: 1030,
-    currentValue: 1013.2,
-    status: 'online',
+    currentValue: '--',
+    status: 'standby',
     accentColor: '#818cf8',
-    history: [1013.0, 1013.1, 1013.1, 1013.2, 1013.2, 1013.3, 1013.2],
-    lastUpdate: new Date(),
+    history: [],
+    lastUpdate: null,
   },
   {
     id: 7,
@@ -118,10 +118,10 @@ let sensors = [
     maxValue: 100,
     minNormal: 0,
     maxNormal: 100,
-    currentValue: 'Ready',
+    currentValue: 'READY',
     status: 'online',
     accentColor: '#a855f7',
-    history: [1, 1, 1, 1, 1, 1, 1, 1],
+    history: [1, 1, 1],
     lastUpdate: new Date(),
     lastTranscript: 'Waiting for voice transmission...',
   }
@@ -384,38 +384,8 @@ function toggleLiveFeed() {
   }
 }
 
-/** Telemetry Tick Engine */
+/** Telemetry Tick Engine (Updates relative timestamps without generating fake mock numbers) */
 function simulateTelemetryTick() {
-  sensors.forEach((s) => {
-    if (s.type === 'Voice') return; // Handled dynamically via SSE from real ESP32
-
-    if (s.status === 'offline') {
-      if (Math.random() > 0.85) {
-        s.status = 'online';
-        logEvent(`Sensor [${s.name}] re-established link.`, 'info');
-      }
-      return;
-    }
-
-    if (Math.random() > 0.995) {
-      s.status = 'offline';
-      logEvent(`Connection lost with [${s.name}]!`, 'danger');
-      return;
-    }
-
-    // Continuous variation
-    const range = s.maxValue - s.minValue;
-    const noise = (Math.random() - 0.49) * (range * 0.035);
-    let nextVal = s.currentValue + noise;
-    nextVal = Math.max(s.minValue, Math.min(s.maxValue, nextVal));
-    s.currentValue = Number(nextVal.toFixed(s.type === 'Pressure' || s.type === 'Temperature' ? 1 : 0));
-
-    // Append to history for sparklines
-    s.history.push(s.currentValue);
-    if (s.history.length > 20) s.history.shift();
-    s.lastUpdate = new Date();
-  });
-
   renderSensors();
   updateTopMetrics();
 }
@@ -439,7 +409,7 @@ function renderSensors() {
   } else if (currentSort === 'value') {
     list.sort((a, b) => (typeof b.currentValue === 'number' ? b.currentValue : 0) - (typeof a.currentValue === 'number' ? a.currentValue : 0));
   } else if (currentSort === 'status') {
-    list.sort((a, b) => (a.status === 'online' ? -1 : 1));
+    list.sort((a, b) => (a.status === 'online' ? -1 : a.status === 'standby' ? 0 : 1));
   }
 
   grid.innerHTML = '';
@@ -449,17 +419,18 @@ function renderSensors() {
     card.className = 'sensor-card';
     card.style.setProperty('--sensor-accent', sensor.accentColor || 'var(--primary)');
 
-    const isAlert = typeof sensor.currentValue === 'number' && (sensor.currentValue > sensor.maxNormal || sensor.currentValue < sensor.minNormal);
-    const statusText = sensor.status === 'offline' ? 'Offline' : isAlert ? 'Alert' : 'Online';
-    const statusClass = sensor.status === 'offline' ? 'offline' : isAlert ? 'alert' : 'online';
+    const isNumeric = typeof sensor.currentValue === 'number';
+    const isAlert = isNumeric && (sensor.currentValue > sensor.maxNormal || sensor.currentValue < sensor.minNormal);
+    const statusText = sensor.status === 'standby' ? 'Standby' : sensor.status === 'offline' ? 'Offline' : isAlert ? 'Alert' : 'Online';
+    const statusClass = sensor.status === 'standby' ? 'standby' : sensor.status === 'offline' ? 'offline' : isAlert ? 'alert' : 'online';
 
-    const pct = typeof sensor.currentValue === 'number'
+    const pct = isNumeric
       ? Math.min(100, Math.max(0, ((sensor.currentValue - sensor.minValue) / (sensor.maxValue - sensor.minValue)) * 100))
-      : 100;
+      : (sensor.status === 'online' ? 100 : 0);
     
     const iconSvg = ICONS[sensor.type] || ICONS.Temperature;
-    const displayVal = sensor.type === 'Voice' ? sensor.currentValue : sensor.currentValue;
-    const displayUnit = sensor.type === 'Voice' ? '' : sensor.unit;
+    const displayVal = sensor.currentValue;
+    const displayUnit = sensor.type === 'Voice' || displayVal === '--' ? '' : sensor.unit;
     const subSubtitle = sensor.type === 'Voice' && sensor.lastTranscript ? `"${sensor.lastTranscript}"` : sensor.location;
 
     card.innerHTML = `
@@ -499,13 +470,15 @@ function renderSensors() {
         </div>
         <div class="sensor-meta-item">
           <span class="lbl">Updated</span>
-          <span class="val">${escapeHtml(timeAgo(sensor.lastUpdate))}</span>
+          <span class="val">${sensor.lastUpdate ? escapeHtml(timeAgo(sensor.lastUpdate)) : 'Awaiting Data'}</span>
         </div>
       </div>
     `;
 
     grid.appendChild(card);
-    drawSparkline(`spark-${encodeURIComponent(sensor.id)}`, sensor.history, sensor.accentColor || '#38bdf8');
+    if (sensor.history && sensor.history.length > 1) {
+      drawSparkline(`spark-${encodeURIComponent(sensor.id)}`, sensor.history, sensor.accentColor || '#38bdf8');
+    }
   });
 }
 
@@ -554,26 +527,25 @@ function updateTopMetrics() {
   document.getElementById('statOnlineSensors').textContent = onlineCount;
   document.getElementById('statTotalSensors').textContent = `/ ${sensors.length} total`;
 
-  const temps = sensors.filter((s) => s.type === 'Temperature' && s.status === 'online').map((s) => s.currentValue);
-  const avgTemp = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '--';
+  const numTemps = sensors.filter((s) => s.type === 'Temperature' && typeof s.currentValue === 'number').map((s) => s.currentValue);
+  const avgTemp = numTemps.length ? (numTemps.reduce((a, b) => a + b, 0) / numTemps.length).toFixed(1) : '--';
   document.getElementById('statAvgTemp').textContent = avgTemp;
 
-  const hums = sensors.filter((s) => s.type === 'Humidity' && s.status === 'online').map((s) => s.currentValue);
-  const avgHum = hums.length ? (hums.reduce((a, b) => a + b, 0) / hums.length).toFixed(0) : '--';
+  const numHums = sensors.filter((s) => s.type === 'Humidity' && typeof s.currentValue === 'number').map((s) => s.currentValue);
+  const avgHum = numHums.length ? (numHums.reduce((a, b) => a + b, 0) / numHums.length).toFixed(0) : '--';
   document.getElementById('statAvgHumidity').textContent = avgHum;
 
   const healthEl = document.getElementById('statSystemHealth');
-  if (onlineCount === sensors.length) {
-    healthEl.textContent = 'Optimal';
-    healthEl.className = 'metric-num text-success';
-  } else if (onlineCount >= sensors.length * 0.7) {
-    healthEl.textContent = 'Degraded';
-    healthEl.className = 'metric-num';
-    healthEl.style.color = 'var(--warning)';
-  } else {
-    healthEl.textContent = 'Critical';
-    healthEl.className = 'metric-num';
-    healthEl.style.color = 'var(--danger)';
+  if (healthEl) {
+    if (onlineCount > 0) {
+      healthEl.textContent = 'Optimal';
+      healthEl.className = 'metric-num text-success';
+      healthEl.style.color = '';
+    } else {
+      healthEl.textContent = 'Standby';
+      healthEl.className = 'metric-num';
+      healthEl.style.color = 'var(--text-muted)';
+    }
   }
 }
 

@@ -606,6 +606,12 @@ body {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.status-tag.standby {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
 /* Value & Live Sparkline Row */
 .sensor-data-row {
   display: flex;
