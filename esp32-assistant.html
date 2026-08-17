@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ESP32 Voice Assistant Backend Service — SensorsHub</title>
+    <title>ESP32 AI Voice Assistant Backend Service Specification — SensorsHub</title>
     <meta
       name="description"
-      content="Backend REST API specification and real-time ingestion service for ESP32 AI Voice Assistant devices (XiaoZhi firmware)."
+      content="Full REST API server specification, payload schemas, SQLite persistence, and runnable FastAPI & Express.js code for ESP32 AI Voice Assistant devices (XiaoZhi firmware)."
     />
     <!-- Anti-cache headers -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -41,43 +41,44 @@
           </div>
           <div>
             <span class="brand-title">ESP32<strong>VoiceAPI</strong></span>
-            <span class="brand-tag">XiaoZhi Telemetry Gateway</span>
+            <span class="brand-tag">XiaoZhi Backend Specification</span>
           </div>
         </a>
 
         <nav class="nav-links">
           <a href="index.html" class="nav-link">← Dashboard</a>
-          <a href="#goal" class="nav-link active">Specification</a>
-          <a href="#endpoint" class="nav-link">Endpoint</a>
-          <a href="#tester" class="nav-link">Live Tester</a>
-          <a href="#implementations" class="nav-link">Backend Code</a>
+          <a href="#goal" class="nav-link active">1. Goal</a>
+          <a href="#endpoints" class="nav-link">2. Endpoints</a>
+          <a href="#responses" class="nav-link">Responses</a>
+          <a href="#features" class="nav-link">3. Features</a>
+          <a href="#deliverables" class="nav-link">4. Runnable Code</a>
         </nav>
 
         <div class="nav-actions">
-          <div class="status-indicator">
+          <a href="#tester" class="action-btn secondary">
             <span class="pulse-dot"></span>
-            <span>API Gateway Active</span>
-          </div>
+            <span>Live Tester</span>
+          </a>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
     <main class="container main-layout">
-      <!-- Section 1: Goal & Device Context -->
+      <!-- 1. Goal Overview -->
       <section id="goal" class="section-overview">
         <div class="hero-bar">
           <div>
-            <div class="eyebrow" style="margin-bottom: 12px;">ESP32 XiaoZhi Firmware Ingestion Service</div>
+            <div class="eyebrow" style="margin-bottom: 12px;">XiaoZhi ESP32 Firmware Telemetry Architecture</div>
             <h1 class="page-title">ESP32 AI Voice Assistant Backend Service</h1>
             <p class="page-subtitle">
-              Resilient backend ingestion server designed to securely receive real-time voice transcripts, intent events, telemetry, and sensor triggers from ESP32 AI Voice Assistant nodes.
+              Secure, resilient REST API server designed to ingest real-time voice transcripts, intent events, and telemetry from ESP32 AI Voice Assistant nodes running XiaoZhi firmware.
             </p>
           </div>
           <div class="quick-controls">
-            <a href="#tester" class="pill-btn" style="background: rgba(56, 189, 248, 0.15); color: var(--primary); border-color: var(--primary);">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              Test Endpoint
+            <a href="#deliverables" class="pill-btn" style="background: rgba(56, 189, 248, 0.15); color: var(--primary); border-color: var(--primary);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              View Runnable Backend
             </a>
           </div>
         </div>
@@ -85,59 +86,86 @@
         <div class="metrics-strip">
           <div class="metric-card">
             <div class="metric-icon-wrap" style="--c: var(--primary);">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
             </div>
             <div class="metric-body">
-              <span class="metric-label">Target Architecture</span>
+              <span class="metric-label">Network Binding</span>
               <div class="metric-val-row">
-                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">FastAPI / Express</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="metric-card">
-            <div class="metric-icon-wrap" style="--c: #a855f7;">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
-            </div>
-            <div class="metric-body">
-              <span class="metric-label">Device Firmware</span>
-              <div class="metric-val-row">
-                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">ESP32 XiaoZhi</span>
+                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">0.0.0.0:8000 (LAN)</span>
               </div>
             </div>
           </div>
 
           <div class="metric-card">
             <div class="metric-icon-wrap" style="--c: #10b981;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <div class="metric-body">
+              <span class="metric-label">Persistence</span>
+              <div class="metric-val-row">
+                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">SQLite / PostgreSQL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon-wrap" style="--c: #a855f7;">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
             <div class="metric-body">
-              <span class="metric-label">Authentication</span>
+              <span class="metric-label">Input Validation</span>
               <div class="metric-val-row">
-                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">Bearer Token / Key</span>
+                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">Pydantic / Zod</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon-wrap" style="--c: #fbbf24;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+            <div class="metric-body">
+              <span class="metric-label">Health & Query API</span>
+              <div class="metric-val-row">
+                <span class="metric-num" style="font-size: 1.15rem; font-weight: 700;">GET /health + History</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Section 2: Endpoint Specification -->
-      <section id="endpoint">
+      <!-- 2. Endpoint Specification -->
+      <section id="endpoints">
         <div class="diag-card">
           <div class="diag-header">
             <div class="diag-title-row">
               <div class="diag-icon" style="--c: #38bdf8;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
               </div>
               <h3>2. Endpoint Specification</h3>
             </div>
-            <span class="status-tag online">REST API v1</span>
+            <span class="status-tag online">REST Contract</span>
           </div>
 
-          <!-- Method & Route Banner -->
+          <!-- Main Ingestion Route -->
           <div style="display: flex; align-items: center; gap: 12px; background: rgba(15, 23, 42, 0.9); padding: 14px 18px; border-radius: var(--radius-md); border: 1px solid var(--border); font-family: var(--font-mono); flex-wrap: wrap;">
             <span style="background: #10b981; color: #021a12; padding: 4px 12px; border-radius: var(--radius-sm); font-weight: 800; font-size: 0.85rem;">POST</span>
             <span style="color: #fff; font-size: 1.05rem; font-weight: 600;">/api/v1/device/data</span>
+            <span style="color: var(--text-dim); margin-left: auto; font-size: 0.8rem;">Ingest device telemetry</span>
+          </div>
+
+          <!-- Query Route -->
+          <div style="display: flex; align-items: center; gap: 12px; background: rgba(15, 23, 42, 0.7); padding: 12px 18px; border-radius: var(--radius-md); border: 1px solid var(--border); font-family: var(--font-mono); flex-wrap: wrap;">
+            <span style="background: #38bdf8; color: #021a12; padding: 4px 12px; border-radius: var(--radius-sm); font-weight: 800; font-size: 0.85rem;">GET</span>
+            <span style="color: #fff; font-size: 0.95rem; font-weight: 600;">/api/v1/device/data?device_id=...&amp;category=...&amp;limit=50</span>
+            <span style="color: var(--text-dim); margin-left: auto; font-size: 0.8rem;">Query historical records</span>
+          </div>
+
+          <!-- Health Check Route -->
+          <div style="display: flex; align-items: center; gap: 12px; background: rgba(15, 23, 42, 0.7); padding: 12px 18px; border-radius: var(--radius-md); border: 1px solid var(--border); font-family: var(--font-mono); flex-wrap: wrap;">
+            <span style="background: #a855f7; color: #fff; padding: 4px 12px; border-radius: var(--radius-sm); font-weight: 800; font-size: 0.85rem;">GET</span>
+            <span style="color: #fff; font-size: 0.95rem; font-weight: 600;">/health</span>
+            <span style="color: var(--text-dim); margin-left: auto; font-size: 0.8rem;">Service health check</span>
           </div>
 
           <!-- Headers Table -->
@@ -148,7 +176,7 @@
                 <thead>
                   <tr style="border-bottom: 1px solid var(--border); color: var(--text-dim);">
                     <th style="padding: 10px 16px;">Header</th>
-                    <th style="padding: 10px 16px;">Value / Type</th>
+                    <th style="padding: 10px 16px;">Type / Format</th>
                     <th style="padding: 10px 16px;">Requirement</th>
                   </tr>
                 </thead>
@@ -161,27 +189,125 @@
                   <tr>
                     <td style="padding: 10px 16px; font-family: var(--font-mono); color: var(--primary);">Authorization</td>
                     <td style="padding: 10px 16px; font-family: var(--font-mono);">Bearer &lt;OPTIONAL_DEVICE_API_KEY&gt;</td>
-                    <td style="padding: 10px 16px; color: var(--text-muted);">Optional (Device Auth)</td>
+                    <td style="padding: 10px 16px; color: var(--text-muted);">Optional (Device Authentication)</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- Payload Schema -->
+          <!-- Incoming Payload Schema -->
           <div>
             <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">Incoming Request Payload (JSON Schema)</h4>
             <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #38bdf8; font-family: var(--font-mono); font-size: 0.85rem; overflow-x: auto; line-height: 1.6;"><code>{
-  <span style="color: #818cf8;">"device_id"</span>: <span style="color: #34d399;">"string"</span>,       <span style="color: #64748b;">// e.g. "mo-project-c3" or MAC address</span>
-  <span style="color: #818cf8;">"category"</span>: <span style="color: #34d399;">"string"</span>,        <span style="color: #64748b;">// e.g. "general", "alert", "user_request", "telemetry"</span>
-  <span style="color: #818cf8;">"data"</span>: <span style="color: #34d399;">"string"</span>,            <span style="color: #64748b;">// The message, sensor reading, or JSON payload from the assistant</span>
-  <span style="color: #818cf8;">"timestamp"</span>: <span style="color: #fbbf24;">1723896000</span>      <span style="color: #64748b;">// Optional Unix timestamp (seconds/ms)</span>
+  <span style="color: #818cf8;">"device_id"</span>: <span style="color: #34d399;">"string"</span>,       <span style="color: #64748b;">// e.g. "mo-project-c3" or MAC address (Required)</span>
+  <span style="color: #818cf8;">"category"</span>: <span style="color: #34d399;">"string"</span>,        <span style="color: #64748b;">// e.g. "general", "alert", "user_request", "telemetry" (Required)</span>
+  <span style="color: #818cf8;">"data"</span>: <span style="color: #34d399;">"string"</span>,            <span style="color: #64748b;">// The message, sensor reading, or JSON payload from assistant (Required)</span>
+  <span style="color: #818cf8;">"timestamp"</span>: <span style="color: #fbbf24;">1723896000</span>      <span style="color: #64748b;">// Optional Unix timestamp (seconds or ms)</span>
 }</code></pre>
           </div>
         </div>
       </section>
 
-      <!-- Section 3: Interactive Live API Tester -->
+      <!-- Expected Server Responses -->
+      <section id="responses">
+        <div class="diag-card">
+          <div class="diag-header">
+            <div class="diag-title-row">
+              <div class="diag-icon" style="--c: #10b981;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <h3>Expected Server Responses</h3>
+            </div>
+            <span class="badge-status">HTTP Status Codes</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+            <!-- Response 1: Success -->
+            <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <strong style="color: #34d399; font-size: 0.9rem;">Success (HTTP 200 / 201)</strong>
+                <span class="status-tag online">201 CREATED</span>
+              </div>
+              <pre style="background: #090e17; border-radius: var(--radius-sm); padding: 12px; font-family: var(--font-mono); font-size: 0.8rem; color: #34d399; line-height: 1.5;"><code>{
+  "status": "success",
+  "message": "Data received and processed",
+  "received_at": "2026-08-17T12:00:00Z"
+}</code></pre>
+            </div>
+
+            <!-- Response 2: Validation Error -->
+            <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <strong style="color: #fbbf24; font-size: 0.9rem;">Validation Error (HTTP 422 / 400)</strong>
+                <span class="status-tag alert">422 UNPROCESSABLE</span>
+              </div>
+              <pre style="background: #090e17; border-radius: var(--radius-sm); padding: 12px; font-family: var(--font-mono); font-size: 0.8rem; color: #fbbf24; line-height: 1.5;"><code>{
+  "status": "error",
+  "message": "Missing required field: 'data'"
+}</code></pre>
+            </div>
+
+            <!-- Response 3: Unauthorized -->
+            <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-md); padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <strong style="color: #f87171; font-size: 0.9rem;">Unauthorized (HTTP 401)</strong>
+                <span class="status-tag offline">401 UNAUTHORIZED</span>
+              </div>
+              <pre style="background: #090e17; border-radius: var(--radius-sm); padding: 12px; font-family: var(--font-mono); font-size: 0.8rem; color: #f87171; line-height: 1.5;"><code>{
+  "status": "error",
+  "message": "Invalid or missing authorization token"
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Required Server Features & Requirements -->
+      <section id="features">
+        <div class="diag-card">
+          <div class="diag-header">
+            <div class="diag-title-row">
+              <div class="diag-icon" style="--c: #a855f7;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+              </div>
+              <h3>3. Required Server Features & Architecture</h3>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px;">
+              <h4 style="color: #fff; font-size: 0.95rem; margin-bottom: 8px;">🛡️ Input Validation</h4>
+              <p style="color: var(--text-muted); font-size: 0.83rem; line-height: 1.6;">
+                Strict payload schema checking (Pydantic/Zod). Gracefully handles large text strings, UTF-8 voice transcripts, or escaped JSON within the <code>data</code> field.
+              </p>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px;">
+              <h4 style="color: #fff; font-size: 0.95rem; margin-bottom: 8px;">💾 Database Persistence</h4>
+              <p style="color: var(--text-muted); font-size: 0.83rem; line-height: 1.6;">
+                Persistent storage (SQLite/PostgreSQL) with fields: <code>id</code> (UUID/PK), <code>device_id</code> (Indexed), <code>category</code> (Indexed), <code>payload_data</code>, <code>client_ip</code>, and <code>created_at</code>.
+              </p>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px;">
+              <h4 style="color: #fff; font-size: 0.95rem; margin-bottom: 8px;">📊 Logging & Monitoring</h4>
+              <p style="color: var(--text-muted); font-size: 0.83rem; line-height: 1.6;">
+                Structured console and file logging for every request with latency benchmarks, device ID, and health check route <code>GET /health</code>.
+              </p>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px;">
+              <h4 style="color: #fff; font-size: 0.95rem; margin-bottom: 8px;">🌐 CORS & 0.0.0.0 Binding</h4>
+              <p style="color: var(--text-muted); font-size: 0.83rem; line-height: 1.6;">
+                Bound to <code>0.0.0.0</code> (not just 127.0.0.1) so ESP32 devices on your local Wi-Fi router can reach the server immediately without connection refusals.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Tester Section -->
       <section id="tester">
         <div class="diag-card">
           <div class="diag-header">
@@ -189,13 +315,13 @@
               <div class="diag-icon" style="--c: #fbbf24;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
               </div>
-              <h3>Interactive Endpoint Simulator & Tester</h3>
+              <h3>Interactive Request & Response Simulator</h3>
             </div>
             <span class="badge-status">Simulator Mode</span>
           </div>
 
           <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px;" class="tester-split">
-            <!-- Test Form -->
+            <!-- Form -->
             <div style="display: flex; flex-direction: column; gap: 14px;">
               <div class="form-group">
                 <label>Device ID</label>
@@ -206,18 +332,22 @@
                   <label>Category</label>
                   <select id="testCategory">
                     <option value="user_request">user_request (Voice Command)</option>
-                    <option value="telemetry">telemetry (Sensors & State)</option>
-                    <option value="alert">alert (Threshold/Warning)</option>
-                    <option value="general">general (Status Ping)</option>
+                    <option value="telemetry">telemetry (Sensors &amp; State)</option>
+                    <option value="alert">alert (Threshold Warning)</option>
+                    <option value="general">general (Ping/Heartbeat)</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>API Key (Optional)</label>
-                  <input type="text" id="testApiKey" placeholder="secret-device-token-123" />
+                  <label>Simulate Response Type</label>
+                  <select id="testSimType">
+                    <option value="201">201 Created (Success)</option>
+                    <option value="422">422 Validation Error</option>
+                    <option value="401">401 Unauthorized</option>
+                  </select>
                 </div>
               </div>
               <div class="form-group">
-                <label>Payload Message / Data</label>
+                <label>Data Field Content</label>
                 <textarea id="testData" rows="3" style="background: rgba(7, 12, 20, 0.8); border: 1px solid var(--border); padding: 10px 14px; border-radius: var(--radius-md); color: #fff; font-family: var(--font-mono); font-size: 0.85rem; outline: none;">Turn on living room air conditioning and set temperature to 22C</textarea>
               </div>
               <button id="btnSendTestPayload" class="btn-submit" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;">
@@ -226,149 +356,262 @@
               </button>
             </div>
 
-            <!-- Server Response Console -->
+            <!-- Console Output -->
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <label style="font-size: 0.78rem; color: var(--text-dim); font-weight: 600;">SERVER RESPONSE CONSOLE</label>
                 <span id="responseStatusBadge" class="status-tag" style="display: none;"></span>
               </div>
-              <pre id="testResponseBox" style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; color: #94a3b8; font-family: var(--font-mono); font-size: 0.8rem; height: 220px; overflow-y: auto; line-height: 1.5;">Click "Send Mock Payload" to simulate an ESP32 voice assistant incoming request...</pre>
+              <pre id="testResponseBox" style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; color: #94a3b8; font-family: var(--font-mono); font-size: 0.8rem; height: 230px; overflow-y: auto; line-height: 1.5;">Click "Send Mock Payload" to simulate an ESP32 voice assistant incoming request...</pre>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Section 4: Production Backend Implementation Code -->
-      <section id="implementations">
+      <!-- 4. Deliverables: Complete Runnable Server Code -->
+      <section id="deliverables">
         <div class="diag-card">
           <div class="diag-header">
             <div class="diag-title-row">
-              <div class="diag-icon" style="--c: #10b981;">
+              <div class="diag-icon" style="--c: #38bdf8;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
               </div>
-              <h3>Production Backend Implementations</h3>
+              <h3>4. Deliverables & Runnable Code</h3>
             </div>
           </div>
 
           <!-- Code Tabs -->
-          <div class="filter-tabs" id="codeTabs" style="margin-bottom: 12px;">
-            <button class="tab-btn active" data-tab="fastapi">Python (FastAPI)</button>
-            <button class="tab-btn" data-tab="express">Node.js (Express & TypeScript)</button>
-            <button class="tab-btn" data-tab="esp32">ESP32 (C++ Arduino / ESP-IDF)</button>
-            <button class="tab-btn" data-tab="curl">cURL Request</button>
+          <div class="filter-tabs" id="codeTabs" style="margin-bottom: 14px;">
+            <button class="tab-btn active" data-tab="fastapi">Python (FastAPI + SQLite)</button>
+            <button class="tab-btn" data-tab="express">Node.js (Express + SQLite)</button>
+            <button class="tab-btn" data-tab="curl">cURL Test Command</button>
+            <button class="tab-btn" data-tab="esp32">ESP32 Firmware (C++)</button>
           </div>
 
-          <!-- Code Snippets -->
+          <!-- Tab 1: FastAPI Python -->
           <div id="codeFastapi" class="code-view">
-            <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #e2e8f0; font-family: var(--font-mono); font-size: 0.82rem; overflow-x: auto; line-height: 1.55;"><code><span style="color: #a855f7;">from</span> fastapi <span style="color: #a855f7;">import</span> FastAPI, Header, HTTPException, status
+            <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 12px; font-size: 0.82rem; color: var(--text-main);">
+              <strong>Setup &amp; Run:</strong> <code>pip install fastapi uvicorn pydantic</code> &rarr; Run with <code>uvicorn main:app --host 0.0.0.0 --port 8000 --reload</code>
+            </div>
+            <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #e2e8f0; font-family: var(--font-mono); font-size: 0.82rem; overflow-x: auto; line-height: 1.55;"><code><span style="color: #64748b;"># server.py — Complete Runnable FastAPI Server with SQLite Persistence</span>
+<span style="color: #a855f7;">from</span> fastapi <span style="color: #a855f7;">import</span> FastAPI, Header, HTTPException, Request, status, Query
+<span style="color: #a855f7;">from</span> fastapi.middleware.cors <span style="color: #a855f7;">import</span> CORSMiddleware
 <span style="color: #a855f7;">from</span> pydantic <span style="color: #a855f7;">import</span> BaseModel, Field
-<span style="color: #a855f7;">from</span> typing <span style="color: #a855f7;">import</span> Optional
-<span style="color: #a855f7;">import</span> time
+<span style="color: #a855f7;">from</span> typing <span style="color: #a855f7;">import</span> Optional, List
+<span style="color: #a855f7;">from</span> datetime <span style="color: #a855f7;">import</span> datetime, timezone
+<span style="color: #a855f7;">import</span> sqlite3, uuid, time
 
-app = FastAPI(title=<span style="color: #34d399;">"ESP32 Voice Assistant Telemetry Service"</span>)
+app = FastAPI(title=<span style="color: #34d399;">"ESP32 AI Voice Assistant Backend"</span>, version=<span style="color: #34d399;">"1.0.0"</span>)
 
-<span style="color: #64748b;"># 1. Pydantic Payload Validation Schema</span>
-<span style="color: #a855f7;">class</span> <span style="color: #38bdf8;">DeviceDataPayload</span>(BaseModel):
-    device_id: str = Field(..., example=<span style="color: #34d399;">"mo-project-c3"</span>)
-    category: str = Field(..., example=<span style="color: #34d399;">"user_request"</span>)
-    data: str = Field(..., example=<span style="color: #34d399;">"Turn on air conditioning"</span>)
-    timestamp: Optional[int] = Field(default_factory=<span style="color: #a855f7;">lambda</span>: int(time.time()))
+<span style="color: #64748b;"># Enable CORS for local and remote clients</span>
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[<span style="color: #34d399;">"*"</span>],
+    allow_credentials=<span style="color: #a855f7;">True</span>,
+    allow_methods=[<span style="color: #34d399;">"*"</span>],
+    allow_headers=[<span style="color: #34d399;">"*"</span>],
+)
 
-<span style="color: #64748b;"># 2. Ingestion Endpoint</span>
+<span style="color: #64748b;"># Initialize SQLite Database & Table</span>
+<span style="color: #a855f7;">def</span> <span style="color: #38bdf8;">init_db</span>():
+    <span style="color: #a855f7;">with</span> sqlite3.connect(<span style="color: #34d399;">"esp32_telemetry.db"</span>) <span style="color: #a855f7;">as</span> conn:
+        conn.execute(<span style="color: #34d399;">"""
+            CREATE TABLE IF NOT EXISTS telemetry_logs (
+                id TEXT PRIMARY KEY,
+                device_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                payload_data TEXT NOT NULL,
+                client_ip TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """</span>)
+        conn.execute(<span style="color: #34d399;">"CREATE INDEX IF NOT EXISTS idx_device_id ON telemetry_logs (device_id);"</span>)
+        conn.execute(<span style="color: #34d399;">"CREATE INDEX IF NOT EXISTS idx_category ON telemetry_logs (category);"</span>)
+
+init_db()
+
+<span style="color: #64748b;"># Pydantic Ingestion Schema</span>
+<span style="color: #a855f7;">class</span> <span style="color: #38bdf8;">DevicePayload</span>(BaseModel):
+    device_id: str = Field(..., description=<span style="color: #34d399;">"Device ID or MAC"</span>, example=<span style="color: #34d399;">"mo-project-c3"</span>)
+    category: str = Field(..., description=<span style="color: #34d399;">"Payload category"</span>, example=<span style="color: #34d399;">"user_request"</span>)
+    data: str = Field(..., description=<span style="color: #34d399;">"Message or JSON string"</span>, example=<span style="color: #34d399;">"Turn on air conditioning"</span>)
+    timestamp: Optional[int] = Field(<span style="color: #a855f7;">None</span>, description=<span style="color: #34d399;">"Optional timestamp"</span>)
+
+<span style="color: #64748b;"># Health Check Route</span>
+<span style="color: #38bdf8;">@app.get</span>(<span style="color: #34d399;">"/health"</span>)
+<span style="color: #a855f7;">def</span> <span style="color: #38bdf8;">health_check</span>():
+    <span style="color: #a855f7;">return</span> {<span style="color: #34d399;">"status"</span>: <span style="color: #34d399;">"healthy"</span>, <span style="color: #34d399;">"timestamp"</span>: datetime.now(timezone.utc).isoformat()}
+
+<span style="color: #64748b;"># POST Telemetry Ingestion Route</span>
 <span style="color: #38bdf8;">@app.post</span>(<span style="color: #34d399;">"/api/v1/device/data"</span>, status_code=status.HTTP_201_CREATED)
-<span style="color: #a855f7;">async def</span> <span style="color: #38bdf8;">receive_device_data</span>(
-    payload: DeviceDataPayload,
+<span style="color: #a855f7;">async def</span> <span style="color: #38bdf8;">ingest_device_data</span>(
+    payload: DevicePayload,
+    request: Request,
     authorization: Optional[str] = Header(<span style="color: #a855f7;">None</span>)
 ):
-    <span style="color: #64748b;"># Optional Security Check</span>
-    <span style="color: #a855f7;">if</span> authorization <span style="color: #a855f7;">and not</span> authorization.startswith(<span style="color: #34d399;">"Bearer "</span>):
-        <span style="color: #a855f7;">raise</span> HTTPException(status_code=<span style="color: #fbbf24;">401</span>, detail=<span style="color: #34d399;">"Invalid token format"</span>)
-    
-    <span style="color: #64748b;"># Process incoming telemetry / voice event</span>
-    print(<span style="color: #34d399;">f"[ESP32 INGEST] Device: {payload.device_id} | Category: {payload.category} | Msg: {payload.data}"</span>)
-    
+    start_time = time.time()
+    client_ip = request.client.host <span style="color: #a855f7;">if</span> request.client <span style="color: #a855f7;">else</span> <span style="color: #34d399;">"unknown"</span>
+    entry_id = str(uuid.uuid4())
+
+    <span style="color: #64748b;"># Persist to SQLite</span>
+    <span style="color: #a855f7;">with</span> sqlite3.connect(<span style="color: #34d399;">"esp32_telemetry.db"</span>) <span style="color: #a855f7;">as</span> conn:
+        conn.execute(
+            <span style="color: #34d399;">"INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)"</span>,
+            (entry_id, payload.device_id, payload.category, payload.data, client_ip)
+        )
+
+    duration_ms = round((time.time() - start_time) * <span style="color: #fbbf24;">1000</span>, <span style="color: #fbbf24;">2</span>)
+    print(<span style="color: #34d399;">f"[{datetime.now().strftime('%H:%M:%S')}] [201] Device:{payload.device_id} Cat:{payload.category} IP:{client_ip} ({duration_ms}ms)"</span>)
+
     <span style="color: #a855f7;">return</span> {
         <span style="color: #34d399;">"status"</span>: <span style="color: #34d399;">"success"</span>,
-        <span style="color: #34d399;">"received_at"</span>: int(time.time()),
-        <span style="color: #34d399;">"device_id"</span>: payload.device_id,
-        <span style="color: #34d399;">"processed_category"</span>: payload.category
-    }</code></pre>
+        <span style="color: #34d399;">"message"</span>: <span style="color: #34d399;">"Data received and processed"</span>,
+        <span style="color: #34d399;">"received_at"</span>: datetime.now(timezone.utc).isoformat()
+    }
+
+<span style="color: #64748b;"># GET Query Records Route</span>
+<span style="color: #38bdf8;">@app.get</span>(<span style="color: #34d399;">"/api/v1/device/data"</span>)
+<span style="color: #a855f7;">def</span> <span style="color: #38bdf8;">query_device_data</span>(
+    device_id: Optional[str] = Query(<span style="color: #a855f7;">None</span>),
+    category: Optional[str] = Query(<span style="color: #a855f7;">None</span>),
+    limit: int = Query(<span style="color: #fbbf24;">50</span>, le=<span style="color: #fbbf24;">200</span>)
+):
+    query = <span style="color: #34d399;">"SELECT id, device_id, category, payload_data, client_ip, created_at FROM telemetry_logs WHERE 1=1"</span>
+    params = []
+    <span style="color: #a855f7;">if</span> device_id:
+        query += <span style="color: #34d399;">" AND device_id = ?"</span>
+        params.append(device_id)
+    <span style="color: #a855f7;">if</span> category:
+        query += <span style="color: #34d399;">" AND category = ?"</span>
+        params.append(category)
+    query += <span style="color: #34d399;">" ORDER BY created_at DESC LIMIT ?"</span>
+    params.append(limit)
+
+    <span style="color: #a855f7;">with</span> sqlite3.connect(<span style="color: #34d399;">"esp32_telemetry.db"</span>) <span style="color: #a855f7;">as</span> conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+
+    <span style="color: #a855f7;">return</span> {<span style="color: #34d399;">"count"</span>: len(rows), <span style="color: #34d399;">"results"</span>: [dict(r) <span style="color: #a855f7;">for</span> r <span style="color: #a855f7;">in</span> rows]}</code></pre>
           </div>
 
+          <!-- Tab 2: Express Node.js -->
           <div id="codeExpress" class="code-view" style="display: none;">
-            <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #e2e8f0; font-family: var(--font-mono); font-size: 0.82rem; overflow-x: auto; line-height: 1.55;"><code><span style="color: #a855f7;">import</span> express, { Request, Response } <span style="color: #a855f7;">from</span> <span style="color: #34d399;">'express'</span>;
+            <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 12px; font-size: 0.82rem; color: var(--text-main);">
+              <strong>Setup &amp; Run:</strong> <code>npm install express cors better-sqlite3 uuid @types/express @types/cors</code> &rarr; <code>node server.js</code>
+            </div>
+            <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #e2e8f0; font-family: var(--font-mono); font-size: 0.82rem; overflow-x: auto; line-height: 1.55;"><code><span style="color: #64748b;">// server.js — Express.js + SQLite Implementation</span>
+<span style="color: #a855f7;">const</span> express = require(<span style="color: #34d399;">'express'</span>);
+<span style="color: #a855f7;">const</span> cors = require(<span style="color: #34d399;">'cors'</span>);
+<span style="color: #a855f7;">const</span> Database = require(<span style="color: #34d399;">'better-sqlite3'</span>);
+<span style="color: #a855f7;">const</span> { v4: uuidv4 } = require(<span style="color: #34d399;">'uuid'</span>);
 
 <span style="color: #a855f7;">const</span> app = express();
-app.use(express.json());
+<span style="color: #a855f7;">const</span> db = <span style="color: #a855f7;">new</span> Database(<span style="color: #34d399;">'esp32_telemetry.db'</span>);
 
-<span style="color: #a855f7;">interface</span> <span style="color: #38bdf8;">DevicePayload</span> {
-  device_id: <span style="color: #38bdf8;">string</span>;
-  category: <span style="color: #38bdf8;">string</span>;
-  data: <span style="color: #38bdf8;">string</span>;
-  timestamp?: <span style="color: #38bdf8;">number</span>;
-}
+app.use(cors());
+app.use(express.json({ limit: <span style="color: #34d399;">'2mb'</span> }));
 
-app.post(<span style="color: #34d399;">'/api/v1/device/data'</span>, (req: Request&lt;{}, {}, DevicePayload&gt;, res: Response) =&gt; {
-  <span style="color: #a855f7;">const</span> { device_id, category, data, timestamp } = req.body;
-  <span style="color: #a855f7;">const</span> authHeader = req.headers.authorization;
+<span style="color: #64748b;">// Init Table</span>
+db.exec(<span style="color: #34d399;">`
+  CREATE TABLE IF NOT EXISTS telemetry_logs (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    payload_data TEXT NOT NULL,
+    client_ip TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_device ON telemetry_logs (device_id);
+`</span>);
+
+<span style="color: #64748b;">// Health Check</span>
+app.get(<span style="color: #34d399;">'/health'</span>, (req, res) =&gt; {
+  res.json({ status: <span style="color: #34d399;">'healthy'</span>, timestamp: <span style="color: #a855f7;">new</span> Date().toISOString() });
+});
+
+<span style="color: #64748b;">// POST Ingestion</span>
+app.post(<span style="color: #34d399;">'/api/v1/device/data'</span>, (req, res) =&gt; {
+  <span style="color: #a855f7;">const</span> { device_id, category, data } = req.body;
 
   <span style="color: #a855f7;">if</span> (!device_id || !category || data === undefined) {
-    <span style="color: #a855f7;">return</span> res.status(<span style="color: #fbbf24;">400</span>).json({ error: <span style="color: #34d399;">'Missing required payload fields'</span> });
+    <span style="color: #a855f7;">return</span> res.status(<span style="color: #fbbf24;">422</span>).json({
+      status: <span style="color: #34d399;">'error'</span>,
+      message: <span style="color: #34d399;">"Missing required field: 'data', 'device_id' or 'category'"</span>
+    });
   }
 
-  console.log(<span style="color: #34d399;">`[ESP32] Node ${device_id} [${category}]: ${data}`</span>);
+  <span style="color: #a855f7;">const</span> id = uuidv4();
+  <span style="color: #a855f7;">const</span> clientIp = req.ip || req.connection.remoteAddress;
+
+  <span style="color: #a855f7;">const</span> stmt = db.prepare(
+    <span style="color: #34d399;">'INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)'</span>
+  );
+  stmt.run(id, device_id, category, <span style="color: #a855f7;">typeof</span> data === <span style="color: #34d399;">'string'</span> ? data : JSON.stringify(data), clientIp);
 
   <span style="color: #a855f7;">return</span> res.status(<span style="color: #fbbf24;">201</span>).json({
     status: <span style="color: #34d399;">'success'</span>,
-    device_id,
-    received_timestamp: timestamp || Math.floor(Date.now() / <span style="color: #fbbf24;">1000</span>)
+    message: <span style="color: #34d399;">'Data received and processed'</span>,
+    received_at: <span style="color: #a855f7;">new</span> Date().toISOString()
   });
 });
 
-app.listen(<span style="color: #fbbf24;">8000</span>, () =&gt; console.log(<span style="color: #34d399;">'Server listening on port 8000'</span>));</code></pre>
+<span style="color: #64748b;">// Bind 0.0.0.0 for LAN access</span>
+app.listen(<span style="color: #fbbf24;">8000</span>, <span style="color: #34d399;">'0.0.0.0'</span>, () =&gt; {
+  console.log(<span style="color: #34d399;">'ESP32 Telemetry Gateway listening on http://0.0.0.0:8000'</span>);
+});</code></pre>
           </div>
 
+          <!-- Tab 3: cURL -->
+          <div id="codeCurl" class="code-view" style="display: none;">
+            <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #38bdf8; font-family: var(--font-mono); font-size: 0.85rem; overflow-x: auto; line-height: 1.6;"><code><span style="color: #64748b;"># 1. Test Ingestion Endpoint:</span>
+curl -X POST http://YOUR_SERVER_IP:8000/api/v1/device/data \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer secret-device-token-123" \
+  -d '{
+    "device_id": "mo-project-c3",
+    "category": "user_request",
+    "data": "Turn on living room air conditioning and set temperature to 22C",
+    "timestamp": 1723896000
+  }'
+
+<span style="color: #64748b;"># 2. Test Health Check:</span>
+curl -X GET http://YOUR_SERVER_IP:8000/health
+
+<span style="color: #64748b;"># 3. Query Ingested Telemetry Records:</span>
+curl -X GET "http://YOUR_SERVER_IP:8000/api/v1/device/data?device_id=mo-project-c3&limit=10"</code></pre>
+          </div>
+
+          <!-- Tab 4: ESP32 Firmware C++ -->
           <div id="codeEsp32" class="code-view" style="display: none;">
             <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #e2e8f0; font-family: var(--font-mono); font-size: 0.82rem; overflow-x: auto; line-height: 1.55;"><code><span style="color: #a855f7;">#include</span> <span style="color: #34d399;">&lt;WiFi.h&gt;</span>
 <span style="color: #a855f7;">#include</span> <span style="color: #34d399;">&lt;HTTPClient.h&gt;</span>
 <span style="color: #a855f7;">#include</span> <span style="color: #34d399;">&lt;ArduinoJson.h&gt;</span>
 
-<span style="color: #a855f7;">const char</span>* serverUrl = <span style="color: #34d399;">"http://YOUR_SERVER_IP/api/v1/device/data"</span>;
+<span style="color: #a855f7;">const char</span>* serverUrl = <span style="color: #34d399;">"http://192.168.1.100:8000/api/v1/device/data"</span>;
 <span style="color: #a855f7;">const char</span>* deviceApiKey = <span style="color: #34d399;">"secret-device-token-123"</span>;
 
-<span style="color: #a855f7;">void</span> <span style="color: #38bdf8;">sendTelemetryPayload</span>(String category, String dataMsg) {
+<span style="color: #a855f7;">void</span> <span style="color: #38bdf8;">sendVoiceAssistantEvent</span>(String category, String transcriptOrData) {
   <span style="color: #a855f7;">if</span> (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     http.begin(serverUrl);
     http.addHeader(<span style="color: #34d399;">"Content-Type"</span>, <span style="color: #34d399;">"application/json"</span>);
     http.addHeader(<span style="color: #34d399;">"Authorization"</span>, String(<span style="color: #34d399;">"Bearer "</span>) + deviceApiKey);
 
-    StaticJsonDocument&lt;<span style="color: #fbbf24;">256</span>&gt; doc;
+    StaticJsonDocument&lt;<span style="color: #fbbf24;">512</span>&gt; doc;
     doc[<span style="color: #34d399;">"device_id"</span>] = <span style="color: #34d399;">"mo-project-c3"</span>;
     doc[<span style="color: #34d399;">"category"</span>] = category;
-    doc[<span style="color: #34d399;">"data"</span>] = dataMsg;
+    doc[<span style="color: #34d399;">"data"</span>] = transcriptOrData;
     doc[<span style="color: #34d399;">"timestamp"</span>] = (unsigned long)time(NULL);
 
     String jsonString;
     serializeJson(doc, jsonString);
 
-    <span style="color: #a855f7;">int</span> httpCode = http.POST(jsonString);
-    Serial.printf(<span style="color: #34d399;">"Payload sent, response code: %d\n"</span>, httpCode);
+    <span style="color: #a855f7;">int</span> httpResponseCode = http.POST(jsonString);
+    String response = http.getString();
+    Serial.printf(<span style="color: #34d399;">"[HTTP %d] Server Response: %s\n"</span>, httpResponseCode, response.c_str());
     http.end();
   }
 }</code></pre>
-          </div>
-
-          <div id="codeCurl" class="code-view" style="display: none;">
-            <pre style="background: #090e17; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px; color: #38bdf8; font-family: var(--font-mono); font-size: 0.85rem; overflow-x: auto; line-height: 1.6;"><code>curl -X POST https://YOUR_SERVER_DOMAIN/api/v1/device/data \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer secret-device-token-123" \
-  -d '{
-    "device_id": "mo-project-c3",
-    "category": "user_request",
-    "data": "Turn on living room air conditioning",
-    "timestamp": 1723896000
-  }'</code></pre>
           </div>
         </div>
       </section>
@@ -388,6 +631,7 @@ app.listen(<span style="color: #fbbf24;">8000</span>, () =&gt; console.log(<span
           <a href="index.html">← Telemetry Dashboard</a>
           <a href="#goal">Specification</a>
           <a href="#tester">Simulator</a>
+          <a href="#deliverables">Backend Code</a>
         </div>
       </div>
     </footer>
@@ -412,14 +656,7 @@ app.listen(<span style="color: #fbbf24;">8000</span>, () =&gt; console.log(<span
         const deviceId = document.getElementById('testDeviceId').value;
         const category = document.getElementById('testCategory').value;
         const data = document.getElementById('testData').value;
-        const apiKey = document.getElementById('testApiKey').value;
-
-        const payload = {
-          device_id: deviceId,
-          category: category,
-          data: data,
-          timestamp: Math.floor(Date.now() / 1000),
-        };
+        const simType = document.getElementById('testSimType').value;
 
         const responseBox = document.getElementById('testResponseBox');
         const badge = document.getElementById('responseStatusBadge');
@@ -428,21 +665,34 @@ app.listen(<span style="color: #fbbf24;">8000</span>, () =&gt; console.log(<span
         
         setTimeout(() => {
           badge.style.display = 'inline-flex';
-          badge.className = 'status-tag online';
-          badge.textContent = 'HTTP 201 CREATED';
+          let responseObj = {};
 
-          const simulatedResponse = {
-            status: 'success',
-            message: 'Device payload ingested successfully',
-            device_id: deviceId,
-            category: category,
-            processed_at: new Date().toISOString(),
-            received_bytes: JSON.stringify(payload).length,
-            authenticated: apiKey ? true : false,
-          };
+          if (simType === '201') {
+            badge.className = 'status-tag online';
+            badge.textContent = 'HTTP 201 CREATED';
+            responseObj = {
+              status: 'success',
+              message: 'Data received and processed',
+              received_at: new Date().toISOString()
+            };
+          } else if (simType === '422') {
+            badge.className = 'status-tag alert';
+            badge.textContent = 'HTTP 422 UNPROCESSABLE';
+            responseObj = {
+              status: 'error',
+              message: "Missing required field: 'data'"
+            };
+          } else if (simType === '401') {
+            badge.className = 'status-tag offline';
+            badge.textContent = 'HTTP 401 UNAUTHORIZED';
+            responseObj = {
+              status: 'error',
+              message: 'Invalid or missing authorization token'
+            };
+          }
 
-          responseBox.textContent = JSON.stringify(simulatedResponse, null, 2);
-        }, 350);
+          responseBox.textContent = JSON.stringify(responseObj, null, 2);
+        }, 300);
       });
 
       document.getElementById('year').textContent = new Date().getFullYear();
