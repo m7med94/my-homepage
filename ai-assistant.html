@@ -24,9 +24,9 @@
     <style>
       .chat-wrapper {
         display: grid;
-        grid-template-columns: 280px 1fr;
+        grid-template-columns: 290px 1fr;
         gap: 24px;
-        min-height: 600px;
+        min-height: 620px;
       }
       .chat-sidebar {
         background: var(--panel);
@@ -35,7 +35,7 @@
         padding: 22px;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 18px;
         backdrop-filter: blur(16px);
       }
       .chat-main {
@@ -44,7 +44,7 @@
         border-radius: var(--radius-lg);
         display: flex;
         flex-direction: column;
-        height: 640px;
+        height: 650px;
         backdrop-filter: blur(16px);
         overflow: hidden;
       }
@@ -66,7 +66,8 @@
       .msg-row {
         display: flex;
         gap: 12px;
-        max-width: 84%;
+        max-width: 85%;
+        animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
       .msg-row.user {
         align-self: flex-end;
@@ -94,6 +95,7 @@
         border-radius: 18px;
         font-size: 0.92rem;
         line-height: 1.55;
+        position: relative;
       }
       .msg-row.assistant .msg-bubble {
         background: rgba(15, 23, 42, 0.85);
@@ -155,6 +157,29 @@
       .send-btn:hover {
         transform: scale(1.05);
       }
+      .stats-badge-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .stats-badge-item {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid var(--border);
+        padding: 8px 10px;
+        border-radius: var(--radius-md);
+        text-align: center;
+      }
+      .stats-badge-num {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--primary);
+        font-family: var(--font-mono);
+      }
+      .stats-badge-label {
+        font-size: 0.68rem;
+        color: var(--text-dim);
+      }
       @media (max-width: 860px) {
         .chat-wrapper {
           grid-template-columns: 1fr;
@@ -194,7 +219,7 @@
         <div class="nav-actions">
           <div class="status-indicator">
             <span class="pulse-dot"></span>
-            <span>Server AI Gateway</span>
+            <span id="gatewayStatusText">Server AI Gateway</span>
           </div>
         </div>
       </div>
@@ -207,13 +232,21 @@
         <aside class="chat-sidebar">
           <div>
             <h3 style="font-size: 1rem; color: #fff; margin-bottom: 4px;">AI Assistant</h3>
-            <p style="font-size: 0.78rem; color: var(--text-dim);">Integrated with your server backend & live sensor telemetry.</p>
+            <p style="font-size: 0.78rem; color: var(--text-dim);">Integrated with server backend &amp; live sensor telemetry.</p>
           </div>
 
-          <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: var(--radius-md); padding: 12px 14px;">
-            <div style="font-size: 0.78rem; color: var(--primary); font-weight: 600; margin-bottom: 4px;">🔒 Server-Side Secure</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
-              AI requests are processed directly on your server.
+          <!-- Live Fleet Stats in Sidebar -->
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Database Telemetry Sync</span>
+            <div class="stats-badge-grid">
+              <div class="stats-badge-item">
+                <div class="stats-badge-num" id="statTotalLogs">--</div>
+                <div class="stats-badge-label">Saved Events</div>
+              </div>
+              <div class="stats-badge-item">
+                <div class="stats-badge-num" id="statActiveDevs">--</div>
+                <div class="stats-badge-label">Active Nodes</div>
+              </div>
             </div>
           </div>
 
@@ -306,6 +339,18 @@
       const userInput = document.getElementById('userInput');
       const chatForm = document.getElementById('chatForm');
       const btnMic = document.getElementById('btnMic');
+
+      // Fetch live fleet statistics for the sidebar
+      async function updateSidebarStats() {
+        try {
+          const res = await fetch('/api/v1/device/stats');
+          if (res.ok) {
+            const data = await res.json();
+            document.getElementById('statTotalLogs').textContent = data.total_records || '0';
+            document.getElementById('statActiveDevs').textContent = (data.unique_devices && data.unique_devices.length) || '1';
+          }
+        } catch (e) {}
+      }
 
       // Suggested Prompt Buttons
       document.querySelectorAll('.prompt-btn').forEach(btn => {
@@ -414,6 +459,7 @@
             loader.innerHTML = formatMarkdown(replyText);
           }
           speakText(replyText);
+          updateSidebarStats();
         } catch (err) {
           const loader = document.getElementById(loadingId);
           if (loader) {
@@ -446,6 +492,7 @@
       }
 
       document.getElementById('year').textContent = new Date().getFullYear();
+      updateSidebarStats();
     </script>
   </body>
 </html>

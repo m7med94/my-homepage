@@ -1,4 +1,4 @@
-# server.py — Production ESP32 AI Voice Assistant Backend & AI Chat Ingestion Service
+# server.py — Production ESP32 AI Voice Assistant Backend & AI Copilot Gateway
 import asyncio
 import json
 import os
@@ -8,7 +8,7 @@ import urllib.request
 import urllib.error
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict, Any
 
 from fastapi import FastAPI, Header, HTTPException, Request, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,23 +19,26 @@ from pydantic import BaseModel, Field
 def load_env():
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, val = line.split("=", 1)
-                    os.environ[key.strip()] = val.strip().strip('"').strip("'")
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, val = line.split("=", 1)
+                        os.environ[key.strip()] = val.strip().strip('"').strip("'")
+        except Exception:
+            pass
 
 load_env()
 
 # 1. Initialize FastAPI Application
 app = FastAPI(
-    title="ESP32 AI Voice Assistant Telemetry Gateway",
-    description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices with live SSE notifications and Server-Side AI Copilot.",
-    version="1.3.0",
+    title="SensorsHub Core & ESP32 AI Voice Assistant Gateway",
+    description="High-performance telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, and Server-Side AI Copilot.",
+    version="2.0.0",
 )
 
-# 2. CORS Middleware Configuration
+# 2. Universal CORS Middleware Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,11 +49,13 @@ app.add_middleware(
 
 DB_PATH = "esp32_telemetry.db"
 subscribers: Set[asyncio.Queue] = set()
-ACTIVE_GEMINI_MODEL: Optional[str] = None
+ACTIVE_GEMINI_MODEL: Optional[str] = "gemini-2.5-flash-lite"
 
-# 3. Database Initialization (SQLite with Indexed Fields)
+# 3. High-Concurrency SQLite Database Initialization (WAL Mode)
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS telemetry_logs (
                 id TEXT PRIMARY KEY,
@@ -89,13 +94,14 @@ def health_check():
         "service": "ESP32 Voice Telemetry Gateway",
         "active_sse_subscribers": len(subscribers),
         "ai_server_key_configured": api_key_configured,
-        "cached_gemini_model": ACTIVE_GEMINI_MODEL,
+        "active_gemini_model": ACTIVE_GEMINI_MODEL,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-# 6. Real-Time SSE Notification Stream
+# 6. Real-Time SSE Notification Stream (Server-Sent Events)
 @app.get("/api/v1/events/stream", summary="Live Telemetry Event Stream")
 async def event_stream(request: Request):
+    """Server-Sent Events (SSE) stream to push instant notifications to dashboards whenever ESP32 transmits."""
     queue = asyncio.Queue()
     subscribers.add(queue)
 
@@ -124,7 +130,7 @@ async def event_stream(request: Request):
         }
     )
 
-# 7. POST Ingestion Endpoint
+# 7. POST Ingestion Endpoint (Stores to SQLite & Broadcasts Real-Time SSE Notification)
 @app.post("/api/v1/device/data", status_code=status.HTTP_201_CREATED, summary="Ingest Device Payload")
 async def ingest_device_data(
     payload: DevicePayload,
@@ -142,7 +148,7 @@ async def ingest_device_data(
         )
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
             conn.execute(
                 "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
                 (entry_id, payload.device_id, payload.category, payload.data, client_ip),
@@ -174,7 +180,7 @@ async def ingest_device_data(
         except Exception:
             subscribers.discard(q)
 
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [201 CREATED] Device:{payload.device_id} | Cat:{payload.category} | IP:{client_ip} | Latency:{duration_ms}ms")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [201 INGEST] Device:{payload.device_id} | Cat:{payload.category} | IP:{client_ip} | Latency:{duration_ms}ms")
     print(f"       🎙️ Payload Data: {payload.data}")
 
     return {
@@ -186,7 +192,7 @@ async def ingest_device_data(
         "broadcast_subscribers": len(subscribers),
     }
 
-# 8. GET Query Records Endpoint
+# 8. GET Query Records Endpoint (Natural-Language Voice Summary + List)
 @app.get("/api/v1/device/data", summary="Query Device Records & Voice Summary")
 def query_device_data(
     category: Optional[str] = Query(None, description="Filter by category"),
@@ -206,7 +212,7 @@ def query_device_data(
     query += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(query, params).fetchall()
 
@@ -237,7 +243,25 @@ def query_device_data(
         "summary": summary,
     }
 
-# 9. POST AI Assistant Chat Endpoint
+# 9. GET Telemetry Stats Summary
+@app.get("/api/v1/device/stats", summary="Telemetry Fleet Statistics")
+def get_device_stats():
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        total_records = conn.execute("SELECT COUNT(*) AS total FROM telemetry_logs").fetchone()["total"]
+        unique_devices = [r["device_id"] for r in conn.execute("SELECT DISTINCT device_id FROM telemetry_logs").fetchall()]
+        categories = [dict(r) for r in conn.execute("SELECT category, COUNT(*) as count FROM telemetry_logs GROUP BY category").fetchall()]
+        latest_entry = conn.execute("SELECT created_at, device_id, payload_data FROM telemetry_logs ORDER BY created_at DESC LIMIT 1").fetchone()
+
+    return {
+        "status": "success",
+        "total_records": total_records,
+        "unique_devices": unique_devices,
+        "categories": categories,
+        "latest_transmission": dict(latest_entry) if latest_entry else None,
+    }
+
+# 10. POST AI Assistant Chat Endpoint (Server-Side High-Speed Inference)
 @app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Telemetry Awareness")
 async def ai_chat(req: ChatRequest):
     global ACTIVE_GEMINI_MODEL
@@ -246,9 +270,9 @@ async def ai_chat(req: ChatRequest):
     telemetry_context = ""
     if req.include_telemetry:
         try:
-            with sqlite3.connect(DB_PATH) as conn:
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
                 conn.row_factory = sqlite3.Row
-                logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 5").fetchall()
+                logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 6").fetchall()
                 if logs:
                     telemetry_context = "\n[Current Live Telemetry in Database]:\n" + "\n".join(
                         [f"- {r['device_id']} [{r['category']}]: {r['payload_data']}" for r in logs]
@@ -258,7 +282,7 @@ async def ai_chat(req: ChatRequest):
 
     system_instruction = (
         "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer naturally, helpful, and concisely in 1-3 sentences in English. Refer to live telemetry logs when relevant."
+        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs when relevant."
     )
 
     if not api_key:
@@ -275,7 +299,6 @@ async def ai_chat(req: ChatRequest):
     )
 
     if is_gemini:
-        # Build standard Gemini request
         payload = {
             "contents": [{
                 "parts": [{
@@ -283,8 +306,8 @@ async def ai_chat(req: ChatRequest):
                 }]
             }],
             "generationConfig": {
-                "temperature": 0.6,
-                "maxOutputTokens": 450
+                "temperature": 0.5,
+                "maxOutputTokens": 400
             }
         }
         req_data = json.dumps(payload).encode("utf-8")
@@ -297,10 +320,8 @@ async def ai_chat(req: ChatRequest):
                 if "candidates" in res_body and res_body["candidates"]:
                     cand = res_body["candidates"][0]
                     if "content" in cand and "parts" in cand["content"]:
-                        # Extract only non-thought response parts for clean speech
                         real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p and not p.get("thought", False)]
                         if not real_parts:
-                            # Fallback if all parts had thought flag
                             real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p]
                         full_text = "".join(real_parts).strip()
                         if full_text:
@@ -309,13 +330,21 @@ async def ai_chat(req: ChatRequest):
                     raise Exception(res_body["error"].get("message", "Unknown error"))
             return None
 
-        # Priority ultra-fast Flash-Lite models
+        # Try active cached model first
+        if ACTIVE_GEMINI_MODEL:
+            try:
+                ans = await asyncio.to_thread(run_gemini, ACTIVE_GEMINI_MODEL)
+                if ans:
+                    return {"status": "success", "reply": ans, "model": ACTIVE_GEMINI_MODEL}
+            except Exception:
+                ACTIVE_GEMINI_MODEL = None
+
         candidate_models = [
             "gemini-2.5-flash-lite",
             "gemini-flash-lite-latest",
             "gemini-2.5-flash",
             "gemini-flash-latest",
-            "gemini-2.5-pro"
+            "gemini-2.5-pro",
         ]
 
         last_err = ""
@@ -337,7 +366,7 @@ async def ai_chat(req: ChatRequest):
 
         return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
 
-    # OpenAI / Groq fallback
+    # OpenAI / Groq Compatible Fallback
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
     model = "llama-3.1-8b-instant" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "gpt-4o-mini"
 
@@ -366,5 +395,6 @@ async def ai_chat(req: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting ESP32 Voice Assistant Backend Gateway & Server-Side AI Copilot on 0.0.0.0:8000...")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    print(f"Starting SensorsHub & ESP32 Gateway on 0.0.0.0:{port}...")
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
