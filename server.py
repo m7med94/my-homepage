@@ -309,13 +309,13 @@ async def ai_chat(req: ChatRequest):
                     raise Exception(res_body["error"].get("message", "Unknown error"))
             return None
 
-        # Priority 2025/2026 models discovered for this key
+        # Priority ultra-fast Flash-Lite models
         candidate_models = [
+            "gemini-2.5-flash-lite",
+            "gemini-flash-lite-latest",
             "gemini-2.5-flash",
             "gemini-flash-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
-            "gemini-pro-latest"
+            "gemini-2.5-pro"
         ]
 
         last_err = ""
