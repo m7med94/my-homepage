@@ -282,12 +282,29 @@ async def ai_chat(req: ChatRequest):
     )
 
     if is_gemini:
-        candidate_models = [
+        # Dynamically discover supported models for this specific API key
+        discovered_models = []
+        try:
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            list_req = urllib.request.Request(list_url, method="GET")
+            with urllib.request.urlopen(list_req, timeout=10) as list_res:
+                list_data = json.loads(list_res.read().decode("utf-8"))
+                for m in list_data.get("models", []):
+                    if "generateContent" in m.get("supportedGenerationMethods", []):
+                        discovered_models.append(m["name"].replace("models/", ""))
+        except Exception:
+            pass
+
+        # Fallback candidate list if list API is restricted
+        candidate_models = discovered_models or [
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-001",
+            "gemini-1.5-flash-002",
+            "gemini-1.5-pro",
+            "gemini-1.5-pro-001",
+            "gemini-2.0-flash-exp",
             "gemini-2.5-flash",
             "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-pro-latest",
-            "gemini-2.5-pro",
             "gemini-pro"
         ]
         
@@ -312,14 +329,13 @@ async def ai_chat(req: ChatRequest):
                         return {"status": "success", "reply": reply, "model": model_name}
             except urllib.error.HTTPError as he:
                 last_error = he.read().decode("utf-8")
-                # If 404, try next candidate model
-                if he.code == 404:
+                if he.code in (400, 404):
                     continue
                 return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_error}"}
             except Exception as e:
                 return {"status": "error", "reply": f"AI Gateway Error: {str(e)}"}
 
-        return {"status": "error", "reply": f"Gemini Model Resolution Error: {last_error}"}
+        return {"status": "error", "reply": f"Gemini Model Discovery Failed: {last_error}"}
 
     # Default / OpenAI / Groq Compatible
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
