@@ -53,6 +53,11 @@ def handle_intent(instruction: str, context: str = "") -> Optional[str]:
     """
     text = instruction.lower().strip()
 
+    # Ignore queries meant for other system features (todos, music, weather, sensors)
+    system_keywords = ["todo", "to-do", "task", "reminder", "playlist", "song", "music", "sensor", "battery", "weather", "temperature", "humidity"]
+    if any(k in text for k in system_keywords) and not text.startswith("wikipedia"):
+        return None
+
     # Trigger patterns
     match = re.search(
         r"^(?:who\s+(?:was|is)|what\s+(?:is|are|was|were)|tell\s+me\s+about|wikipedia(?:\s+search)?(?:\s+for)?|explain(?:\s+what\s+is)?)\s+(.+)",
