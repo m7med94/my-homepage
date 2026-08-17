@@ -12,6 +12,7 @@ from backend.routers import (
     todos as todos_router,
     music as music_router,
     agent as agent_router,
+    network as network_router,
 )
 
 # 1. Initialize SQLite database schemas & WAL mode
@@ -23,8 +24,8 @@ validate_production_secrets()
 # 2. Initialize FastAPI Application
 app = FastAPI(
     title="SensorsHub Core & ESP32 AI Voice Assistant Gateway",
-    description="Modular telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, Music Streaming, and Server-Side AI Copilot.",
-    version="2.2.0",
+    description="Modular telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, Music Streaming, Local Network Tools, and Server-Side AI Copilot.",
+    version="2.3.0",
 )
 
 # 3. Mount /music directory for direct browser and ESP32 audio streaming
@@ -45,6 +46,7 @@ app.include_router(telemetry_router.router)
 app.include_router(todos_router.router)
 app.include_router(music_router.router)
 app.include_router(agent_router.router)
+app.include_router(network_router.router)
 
 if __name__ == "__main__":
     import uvicorn

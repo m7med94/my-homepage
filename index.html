@@ -144,6 +144,117 @@
             </div>
           </div>
         </div>
+
+        <!-- Local Network Tools & Server Health Overview Card -->
+        <div class="network-tools-card" id="networkToolsOverview">
+          <div class="network-tools-header">
+            <div class="diag-title-row">
+              <div class="diag-icon" style="--c: #38bdf8;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+              </div>
+              <div>
+                <h3 class="network-tools-title">Local Network Tools &amp; Server Health</h3>
+                <p class="network-tools-subtitle">Ping local devices, check server disk space, and monitor whether the ESP32 is online in real time.</p>
+              </div>
+            </div>
+            <div class="net-status-badge-wrap">
+              <span class="badge-status" id="esp32ConnBadge">ESP32: Checking...</span>
+              <button class="pill-btn" id="btnRefreshNetTools" title="Refresh network & disk stats">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Tools Interactive Grid -->
+          <div class="network-tools-grid">
+            <!-- Tool 1: ESP32 Online Monitor -->
+            <div class="net-tool-col">
+              <div class="net-tool-label">
+                <span class="net-tool-icon">📡</span>
+                <span>ESP32 XiaoZhi Status</span>
+              </div>
+              <div class="net-tool-stat-row">
+                <span class="net-tool-val" id="esp32StatusVal">Checking...</span>
+                <span class="net-tool-sub" id="esp32LastSeenText">--</span>
+              </div>
+              <div class="net-tool-meta" id="esp32MetaText">Node: mo-project-c3</div>
+              <button type="button" class="tool-action-btn" id="btnCheckEsp32">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                Verify ESP32 Online
+              </button>
+            </div>
+
+            <!-- Tool 2: Server Disk Space -->
+            <div class="net-tool-col">
+              <div class="net-tool-label">
+                <span class="net-tool-icon">💾</span>
+                <span>Server Disk Storage</span>
+              </div>
+              <div class="net-tool-stat-row">
+                <span class="net-tool-val" id="diskFreeVal">-- GB Free</span>
+                <span class="net-tool-sub" id="diskPercentText">(--% used)</span>
+              </div>
+              <div class="disk-progress-bar-wrap">
+                <div class="disk-progress-bar" id="diskProgressBar" style="width: 0%;"></div>
+              </div>
+              <div class="net-tool-meta" id="diskMetaText">Total Capacity: -- GB</div>
+              <button type="button" class="tool-action-btn" id="btnCheckDisk">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Inspect Storage
+              </button>
+            </div>
+
+            <!-- Tool 3: Device Ping Tool -->
+            <div class="net-tool-col">
+              <div class="net-tool-label">
+                <span class="net-tool-icon">⚡</span>
+                <span>Ping Devices &amp; Gateway</span>
+              </div>
+              <div class="ping-input-group">
+                <select id="pingPresetSelect" class="ping-select">
+                  <option value="127.0.0.1">Localhost (127.0.0.1)</option>
+                  <option value="192.168.1.1">Router Gateway (192.168.1.1)</option>
+                  <option value="8.8.8.8">Google DNS (8.8.8.8)</option>
+                  <option value="esp32">ESP32 Client IP</option>
+                  <option value="custom">Custom Target...</option>
+                </select>
+                <input type="text" id="pingCustomInput" class="ping-input" placeholder="IP / hostname" style="display: none;" />
+                <button type="button" class="tool-action-btn ping-btn" id="btnRunPing">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  Ping
+                </button>
+              </div>
+              <div class="ping-result-tag" id="pingResultTag">Ready to ping</div>
+            </div>
+          </div>
+
+          <!-- Quick Interactive Voice / AI Query Chips -->
+          <div class="network-quick-chips">
+            <span class="quick-chip-label">Voice / Copilot Queries:</span>
+            <button type="button" class="net-query-chip" data-query="Is my server healthy?">
+              💬 “Is my server healthy?”
+            </button>
+            <button type="button" class="net-query-chip" data-query="Is the ESP32 connected?">
+              📡 “Is the ESP32 connected?”
+            </button>
+            <button type="button" class="net-query-chip" data-query="Check server disk space">
+              💾 “Check server disk space”
+            </button>
+            <button type="button" class="net-query-chip" data-query="Ping local network">
+              ⚡ “Ping local network”
+            </button>
+          </div>
+
+          <!-- Query Live Response Box -->
+          <div class="net-query-response" id="netQueryResponse" style="display: none;">
+            <div class="response-header">
+              <span class="response-speaker">🤖 ServerAI Diagnostics</span>
+              <button type="button" class="close-response-btn" id="btnCloseNetResponse">&times;</button>
+            </div>
+            <div class="response-text" id="netResponseText"></div>
+          </div>
+        </div>
       </section>
 
       <!-- Sensor Cards Section with Filter & Search -->

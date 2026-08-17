@@ -176,6 +176,7 @@ async function initApp() {
     return;
   }
   bindEvents();
+  initNetworkTools();
   renderSensors();
   updateTopMetrics();
   updateClock();
@@ -754,5 +755,253 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
+/**
+ * =========================================================================
+ * Local Network Tools, Server Health & ESP32 Live Monitoring Engine
+ * =========================================================================
+ */
+let esp32CachedIp = null;
+
+/** Initialize Network Tools & Health Monitor */
+function initNetworkTools() {
+  // 1. Initial status checks
+  refreshAllNetworkTools();
+
+  // 2. Event Listeners
+  const btnRefresh = document.getElementById('btnRefreshNetTools');
+  if (btnRefresh) btnRefresh.addEventListener('click', refreshAllNetworkTools);
+
+  const btnCheckEsp32 = document.getElementById('btnCheckEsp32');
+  if (btnCheckEsp32) btnCheckEsp32.addEventListener('click', checkEsp32Connection);
+
+  const btnCheckDisk = document.getElementById('btnCheckDisk');
+  if (btnCheckDisk) btnCheckDisk.addEventListener('click', checkServerDiskSpace);
+
+  const btnPing = document.getElementById('btnRunPing');
+  if (btnPing) btnPing.addEventListener('click', executePingTest);
+
+  const pingSelect = document.getElementById('pingPresetSelect');
+  const pingInput = document.getElementById('pingCustomInput');
+  if (pingSelect && pingInput) {
+    pingSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'custom') {
+        pingInput.style.display = 'block';
+        pingInput.focus();
+      } else {
+        pingInput.style.display = 'none';
+      }
+    });
+  }
+
+  // 3. Quick Query Chips (“Is my server healthy?”, “Is the ESP32 connected?”, etc.)
+  document.querySelectorAll('.net-query-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const query = chip.getAttribute('data-query');
+      if (query) runNetworkVoiceQuery(query);
+    });
+  });
+
+  // 4. Close Response Box
+  const btnCloseResponse = document.getElementById('btnCloseNetResponse');
+  if (btnCloseResponse) {
+    btnCloseResponse.addEventListener('click', () => {
+      const box = document.getElementById('netQueryResponse');
+      if (box) box.style.display = 'none';
+    });
+  }
+
+  // Periodic network & disk refresh every 20 seconds
+  setInterval(() => {
+    if (isLive) {
+      checkEsp32Connection(false);
+      checkServerDiskSpace(false);
+    }
+  }, 20000);
+}
+
+/** Refresh All Network & Health Tools */
+async function refreshAllNetworkTools() {
+  await Promise.allSettled([
+    checkEsp32Connection(true),
+    checkServerDiskSpace(true)
+  ]);
+  showToast('Network & server diagnostics refreshed', 'info');
+}
+
+/** Check ESP32 Online & Connection Status */
+async function checkEsp32Connection(showFeedback = false) {
+  const statusEl = document.getElementById('esp32StatusVal');
+  const lastSeenEl = document.getElementById('esp32LastSeenText');
+  const metaEl = document.getElementById('esp32MetaText');
+  const badgeEl = document.getElementById('esp32ConnBadge');
+
+  try {
+    const res = await fetch('/api/v1/network/esp32-status');
+    if (!res.ok) throw new Error('Status endpoint error');
+    const data = await res.json();
+
+    if (data.status === 'online') {
+      statusEl.textContent = 'Online & Active';
+      statusEl.style.color = 'var(--success)';
+      lastSeenEl.textContent = `(${data.last_seen_text})`;
+      badgeEl.textContent = 'ESP32: Online';
+      badgeEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      badgeEl.style.color = 'var(--success)';
+    } else if (data.status === 'idle') {
+      statusEl.textContent = 'Standby / Idle';
+      statusEl.style.color = 'var(--warning)';
+      lastSeenEl.textContent = `(${data.last_seen_text})`;
+      badgeEl.textContent = 'ESP32: Standby';
+      badgeEl.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+      badgeEl.style.color = 'var(--warning)';
+    } else {
+      statusEl.textContent = 'Offline';
+      statusEl.style.color = 'var(--danger)';
+      lastSeenEl.textContent = data.last_seen_text ? `(${data.last_seen_text})` : '(No data)';
+      badgeEl.textContent = 'ESP32: Offline';
+      badgeEl.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      badgeEl.style.color = 'var(--danger)';
+    }
+
+    if (data.client_ip && data.client_ip !== 'unknown') {
+      esp32CachedIp = data.client_ip;
+      metaEl.textContent = `Node: ${data.device_id || 'mo-project-c3'} (${data.client_ip})`;
+    } else {
+      metaEl.textContent = `Node: ${data.device_id || 'mo-project-c3'}`;
+    }
+
+    if (showFeedback) {
+      logEvent(`ESP32 Health Check: ${data.summary || statusEl.textContent}`, data.status === 'online' ? 'info' : 'warn');
+    }
+  } catch (err) {
+    statusEl.textContent = 'Check Failed';
+    statusEl.style.color = 'var(--text-dim)';
+  }
+}
+
+/** Check Real Server Disk Storage */
+async function checkServerDiskSpace(showFeedback = false) {
+  const freeEl = document.getElementById('diskFreeVal');
+  const pctEl = document.getElementById('diskPercentText');
+  const barEl = document.getElementById('diskProgressBar');
+  const metaEl = document.getElementById('diskMetaText');
+
+  try {
+    const res = await fetch('/api/v1/network/disk');
+    if (!res.ok) throw new Error('Disk endpoint error');
+    const data = await res.json();
+
+    if (data.status === 'success') {
+      freeEl.textContent = `${data.free_gb} GB Free`;
+      pctEl.textContent = `(${data.percent_used}% used)`;
+      metaEl.textContent = `Total Capacity: ${data.total_gb} GB (${data.used_gb} GB used)`;
+
+      if (barEl) {
+        barEl.style.width = `${Math.min(100, data.percent_used)}%`;
+        if (data.percent_used > 90) {
+          barEl.style.background = 'var(--danger)';
+        } else if (data.percent_used > 75) {
+          barEl.style.background = 'var(--warning)';
+        } else {
+          barEl.style.background = 'linear-gradient(90deg, #38bdf8, #818cf8)';
+        }
+      }
+
+      if (showFeedback) {
+        logEvent(`Server Storage Check: ${data.summary}`, 'info');
+      }
+    }
+  } catch (err) {
+    freeEl.textContent = 'Storage Info Unavailable';
+  }
+}
+
+/** Execute Device ICMP Ping Test */
+async function executePingTest() {
+  const selectEl = document.getElementById('pingPresetSelect');
+  const inputEl = document.getElementById('pingCustomInput');
+  const resultTag = document.getElementById('pingResultTag');
+  const pingBtn = document.getElementById('btnRunPing');
+
+  let target = selectEl.value;
+  if (target === 'custom') {
+    target = (inputEl.value || '').trim();
+    if (!target) {
+      showToast('Please enter a valid IP address or hostname', 'warning');
+      return;
+    }
+  } else if (target === 'esp32') {
+    target = esp32CachedIp || '127.0.0.1';
+  }
+
+  pingBtn.disabled = true;
+  resultTag.textContent = `Pinging ${target}...`;
+  resultTag.className = 'ping-result-tag';
+
+  try {
+    const res = await fetch(`/api/v1/network/ping?target=${encodeURIComponent(target)}`);
+    const data = await res.json();
+
+    pingBtn.disabled = false;
+    if (data.reachable) {
+      resultTag.textContent = `✓ ${data.target}: ${data.latency_ms}ms (Online)`;
+      resultTag.className = 'ping-result-tag online';
+      logEvent(`Ping SUCCESS [${data.target}]: Round-trip ${data.latency_ms}ms`, 'info');
+      showToast(`Ping ${data.target}: ${data.latency_ms}ms`, 'info');
+    } else {
+      resultTag.textContent = `✗ ${data.target}: ${data.status || 'Timed Out'}`;
+      resultTag.className = 'ping-result-tag offline';
+      logEvent(`Ping FAILED [${data.target}]: ${data.status || 'Unreachable'}`, 'warn');
+      showToast(`Ping ${data.target}: Unreachable`, 'warning');
+    }
+  } catch (err) {
+    pingBtn.disabled = false;
+    resultTag.textContent = `Error pinging ${target}`;
+    resultTag.className = 'ping-result-tag offline';
+  }
+}
+
+/** Run Interactive Voice / AI Query via Agent Dispatcher */
+async function runNetworkVoiceQuery(queryText) {
+  const responseBox = document.getElementById('netQueryResponse');
+  const responseText = document.getElementById('netResponseText');
+
+  if (responseBox && responseText) {
+    responseBox.style.display = 'flex';
+    responseText.textContent = `Analyzing: "${queryText}"...`;
+  }
+
+  logEvent(`Querying ServerAI Copilot: "${queryText}"`, 'info');
+
+  try {
+    const res = await fetch('/api/v1/agent/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction: queryText, device_id: 'dashboard-web', context: 'network_tools' }),
+    });
+
+    if (!res.ok) throw new Error(`Agent error (${res.status})`);
+    const data = await res.json();
+    const reply = data.reply || data.summary || 'Query completed.';
+
+    if (responseText) {
+      responseText.textContent = reply;
+    }
+
+    logEvent(`ServerAI Response: "${reply}"`, 'info');
+    showToast(`ServerAI: ${reply.substring(0, 50)}...`, 'info');
+
+    // Also trigger instant UI tool refresh if applicable
+    if (queryText.toLowerCase().includes('esp32')) checkEsp32Connection(false);
+    if (queryText.toLowerCase().includes('disk') || queryText.toLowerCase().includes('health')) checkServerDiskSpace(false);
+
+  } catch (err) {
+    if (responseText) {
+      responseText.textContent = `Error reaching Server Agent: ${err.message}`;
+    }
+  }
+}
+
 // Start application
 document.addEventListener('DOMContentLoaded', initApp);
+
