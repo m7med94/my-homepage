@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SensorsHub — Device Events</title>
+    <title>SensorsHub — Device Events &amp; To-Do List</title>
     <meta
       name="description"
-      content="Real-time live feed and telemetry console for Device Events."
+      content="Real-time live feed, telemetry console, and device task management for Device Events."
     />
     <!-- Anti-cache headers -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -50,7 +50,7 @@
         display: flex;
         flex-direction: column;
         gap: 14px;
-        max-height: 560px;
+        max-height: 520px;
         overflow-y: auto;
         padding-right: 6px;
       }
@@ -77,7 +77,7 @@
         color: var(--text-dim);
       }
       .feed-msg {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         color: #fff;
         font-weight: 500;
         line-height: 1.5;
@@ -89,6 +89,253 @@
         font-size: 0.75rem;
         color: var(--text-dim);
         font-family: var(--font-mono);
+      }
+
+      /* To-Do List Styles */
+      .todo-section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        backdrop-filter: blur(16px);
+      }
+      .todo-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .todo-stats {
+        display: flex;
+        gap: 8px;
+      }
+      .todo-badge {
+        font-size: 0.75rem;
+        padding: 4px 10px;
+        border-radius: var(--radius-full);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+      }
+      .todo-badge.active {
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--primary);
+        border-color: rgba(56, 189, 248, 0.3);
+      }
+      .todo-form {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .todo-input {
+        flex: 1;
+        min-width: 240px;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid var(--border);
+        padding: 12px 18px;
+        border-radius: var(--radius-md);
+        color: #fff;
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.2s ease;
+      }
+      .todo-input:focus {
+        border-color: var(--primary);
+      }
+      .todo-select {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid var(--border);
+        padding: 12px 16px;
+        border-radius: var(--radius-md);
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        outline: none;
+        cursor: pointer;
+      }
+      .todo-add-btn {
+        background: var(--primary);
+        color: #03141f;
+        border: none;
+        padding: 12px 22px;
+        border-radius: var(--radius-md);
+        font-weight: 600;
+        font-size: 0.88rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+      .todo-add-btn:hover {
+        transform: translateY(-1px);
+        background: #7dd3fc;
+      }
+      .todo-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+      .todo-chip {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px dashed var(--border);
+        color: var(--text-dim);
+        font-size: 0.74rem;
+        padding: 4px 10px;
+        border-radius: var(--radius-full);
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .todo-chip:hover {
+        background: rgba(56, 189, 248, 0.1);
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+      .todo-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .todo-filter-tabs {
+        display: flex;
+        gap: 6px;
+      }
+      .todo-tab {
+        background: transparent;
+        border: none;
+        color: var(--text-dim);
+        font-size: 0.8rem;
+        padding: 4px 10px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .todo-tab.active {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        font-weight: 600;
+      }
+      .todo-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 420px;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+      .todo-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        transition: all 0.2s ease;
+        animation: slide-in 0.25s ease forwards;
+      }
+      .todo-item:hover {
+        background: rgba(15, 23, 42, 0.9);
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+      .todo-item.completed {
+        opacity: 0.65;
+        background: rgba(15, 23, 42, 0.3);
+      }
+      .todo-item.completed .todo-text {
+        text-decoration: line-through;
+        color: var(--text-dim);
+      }
+      .todo-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+      }
+      .todo-check {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        border: 2px solid var(--border);
+        background: transparent;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+      }
+      .todo-item.completed .todo-check {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #03141f;
+      }
+      .todo-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .todo-text {
+        color: #f1f5f9;
+        font-size: 0.92rem;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+      .todo-date {
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        font-family: var(--font-mono);
+      }
+      .todo-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .todo-priority {
+        font-size: 0.68rem;
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .todo-priority.high {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+      .todo-priority.normal {
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--primary);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+      }
+      .todo-priority.routine {
+        background: rgba(16, 185, 129, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .todo-del-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-dim);
+        cursor: pointer;
+        padding: 6px;
+        border-radius: var(--radius-sm);
+        display: grid;
+        place-items: center;
+        transition: color 0.15s ease, background 0.15s ease;
+      }
+      .todo-del-btn:hover {
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.1);
       }
     </style>
   </head>
@@ -110,7 +357,7 @@
           </div>
           <div>
             <span class="brand-title">Device<strong>Events</strong></span>
-            <span class="brand-tag">Live Activity Feed</span>
+            <span class="brand-tag">Live Activity &amp; Tasks</span>
           </div>
         </a>
 
@@ -136,7 +383,7 @@
         <div>
           <h1 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 6px;">Device Events</h1>
           <p style="color: var(--text-muted); font-size: 0.9rem;">
-            Live transcripts, status telemetry, and device events received from your connected hardware.
+            Live transcripts, status telemetry, and device task management for connected hardware.
           </p>
         </div>
         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
@@ -158,7 +405,7 @@
             <div class="diag-icon" style="--c: #a855f7;">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
             </div>
-            <h3>Live Transcripts &amp; Device Events</h3>
+            <h3>Live Transcripts &amp; Telemetry Stream</h3>
           </div>
           <button id="btnRefreshFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
@@ -170,6 +417,77 @@
           <div style="text-align: center; padding: 36px 0; color: var(--text-dim);">
             Loading transmissions from database...
           </div>
+        </div>
+      </section>
+
+      <!-- To-Do List Section -->
+      <section class="todo-section">
+        <div class="todo-header">
+          <div class="diag-title-row">
+            <div class="diag-icon" style="--c: var(--primary);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+            </div>
+            <div>
+              <h3 style="font-size: 1.15rem; color: #fff; margin-bottom: 2px;">To-Do List</h3>
+              <p style="font-size: 0.78rem; color: var(--text-dim);">Device maintenance, hardware tasks, and smart reminders.</p>
+            </div>
+          </div>
+          <div class="todo-stats">
+            <span class="todo-badge active" id="todoPendingBadge">0 Pending</span>
+            <span class="todo-badge" id="todoCompletedBadge">0 Done</span>
+          </div>
+        </div>
+
+        <!-- Add Task Form -->
+        <form id="todoForm" class="todo-form">
+          <input
+            type="text"
+            id="todoInput"
+            class="todo-input"
+            placeholder="Add new device task (e.g., Calibrate temperature sensor, check battery...)"
+            required
+            maxlength="200"
+          />
+          <select id="todoPriority" class="todo-select">
+            <option value="normal">Normal</option>
+            <option value="high">High Priority</option>
+            <option value="routine">Routine</option>
+          </select>
+          <button type="submit" class="todo-add-btn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add Task
+          </button>
+        </form>
+
+        <!-- Quick Task Chips -->
+        <div class="todo-chips">
+          <span style="font-size: 0.72rem; color: var(--text-dim); display: inline-flex; align-items: center;">Quick Add:</span>
+          <button type="button" class="todo-chip" data-task="Calibrate DHT22 temperature sensor" data-priority="normal">+ Calibrate Sensors</button>
+          <button type="button" class="todo-chip" data-task="Check ESP32 battery level & voltage" data-priority="high">+ Check Battery</button>
+          <button type="button" class="todo-chip" data-task="Test XiaoZhi voice microphone reception" data-priority="routine">+ Test Voice Mic</button>
+          <button type="button" class="todo-chip" data-task="Backup telemetry SQLite database" data-priority="routine">+ Backup Database</button>
+          <button type="button" class="todo-chip" data-task="Update ESP32 firmware via OTA" data-priority="high">+ Update Firmware</button>
+        </div>
+
+        <!-- Filter Toolbar -->
+        <div class="todo-toolbar">
+          <div class="todo-filter-tabs">
+            <button type="button" class="todo-tab active" data-filter="all">All Tasks</button>
+            <button type="button" class="todo-tab" data-filter="active">Pending</button>
+            <button type="button" class="todo-tab" data-filter="completed">Completed</button>
+          </div>
+          <button type="button" id="btnClearCompleted" class="pill-btn" style="font-size: 0.74rem; padding: 4px 10px;">Clear Completed</button>
+        </div>
+
+        <!-- Task List Container -->
+        <div class="todo-list" id="todoList">
+          <!-- Dynamically populated -->
         </div>
       </section>
     </main>
@@ -326,10 +644,179 @@
       }
 
       function escapeHtml(str) {
-        if (!str) return '';
+        if (str === null || str === undefined) return '';
         return String(str).replace(/[&<>"']/g, function(m) {
           return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
         });
+      }
+
+      // ==========================
+      // TO-DO LIST MANAGEMENT
+      // ==========================
+      const STORAGE_KEY = 'sensorshub_device_todos';
+      let currentTodoFilter = 'all';
+
+      // Default sample tasks if none exist
+      const defaultTodos = [
+        { id: '1', text: 'Calibrate living room DHT22 temperature sensor', priority: 'normal', completed: false, createdAt: new Date().toISOString() },
+        { id: '2', text: 'Check XiaoZhi ESP32 battery level & charging dock', priority: 'high', completed: false, createdAt: new Date().toISOString() },
+        { id: '3', text: 'Verify automated SQLite WAL backup schedule', priority: 'routine', completed: true, createdAt: new Date().toISOString() }
+      ];
+
+      function getTodos() {
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) return JSON.parse(stored);
+        } catch (e) {}
+        return defaultTodos;
+      }
+
+      function saveTodos(todos) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+        } catch (e) {}
+        renderTodos();
+      }
+
+      function renderTodos() {
+        const todos = getTodos();
+        const todoList = document.getElementById('todoList');
+        if (!todoList) return;
+
+        const pendingCount = todos.filter(t => !t.completed).length;
+        const completedCount = todos.filter(t => t.completed).length;
+
+        document.getElementById('todoPendingBadge').textContent = `${pendingCount} Pending`;
+        document.getElementById('todoCompletedBadge').textContent = `${completedCount} Done`;
+
+        const filtered = todos.filter(t => {
+          if (currentTodoFilter === 'active') return !t.completed;
+          if (currentTodoFilter === 'completed') return t.completed;
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          todoList.innerHTML = `
+            <div style="text-align: center; padding: 32px 0; color: var(--text-dim); font-size: 0.88rem;">
+              No tasks found in this view.
+            </div>
+          `;
+          return;
+        }
+
+        todoList.innerHTML = '';
+        filtered.forEach(todo => {
+          const item = document.createElement('div');
+          item.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+
+          const dateFormatted = new Date(todo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+          item.innerHTML = `
+            <div class="todo-left">
+              <button type="button" class="todo-check" data-id="${escapeHtml(todo.id)}" title="${todo.completed ? 'Mark as pending' : 'Mark as completed'}">
+                ${todo.completed ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
+              </button>
+              <div class="todo-content">
+                <span class="todo-text">${escapeHtml(todo.text)}</span>
+                <span class="todo-date">${escapeHtml(dateFormatted)}</span>
+              </div>
+            </div>
+            <div class="todo-right">
+              <span class="todo-priority ${escapeHtml(todo.priority)}">${escapeHtml(todo.priority)}</span>
+              <button type="button" class="todo-del-btn" data-id="${escapeHtml(todo.id)}" title="Delete task">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
+          `;
+
+          // Event bindings
+          const checkBtn = item.querySelector('.todo-check');
+          checkBtn.addEventListener('click', () => toggleTodo(todo.id));
+
+          const delBtn = item.querySelector('.todo-del-btn');
+          delBtn.addEventListener('click', () => deleteTodo(todo.id));
+
+          todoList.appendChild(item);
+        });
+      }
+
+      function addTodo(text, priority = 'normal') {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const todos = getTodos();
+        const newTodo = {
+          id: 'todo_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          text: trimmed,
+          priority: priority,
+          completed: false,
+          createdAt: new Date().toISOString()
+        };
+        todos.unshift(newTodo);
+        saveTodos(todos);
+        showToast(`Task added: "${trimmed}"`);
+      }
+
+      function toggleTodo(id) {
+        const todos = getTodos();
+        const found = todos.find(t => t.id === id);
+        if (found) {
+          found.completed = !found.completed;
+          saveTodos(todos);
+        }
+      }
+
+      function deleteTodo(id) {
+        let todos = getTodos();
+        todos = todos.filter(t => t.id !== id);
+        saveTodos(todos);
+        showToast('Task removed');
+      }
+
+      function initTodoListeners() {
+        const form = document.getElementById('todoForm');
+        const input = document.getElementById('todoInput');
+        const prioritySelect = document.getElementById('todoPriority');
+
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          addTodo(input.value, prioritySelect.value);
+          input.value = '';
+        });
+
+        // Quick add chips
+        document.querySelectorAll('.todo-chip').forEach(chip => {
+          chip.addEventListener('click', () => {
+            const task = chip.getAttribute('data-task');
+            const priority = chip.getAttribute('data-priority') || 'normal';
+            addTodo(task, priority);
+          });
+        });
+
+        // Filter tabs
+        document.querySelectorAll('.todo-tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            document.querySelectorAll('.todo-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentTodoFilter = tab.getAttribute('data-filter');
+            renderTodos();
+          });
+        });
+
+        // Clear completed button
+        document.getElementById('btnClearCompleted').addEventListener('click', () => {
+          let todos = getTodos();
+          const initialCount = todos.length;
+          todos = todos.filter(t => !t.completed);
+          if (todos.length !== initialCount) {
+            saveTodos(todos);
+            showToast('Cleared completed tasks');
+          }
+        });
+
+        renderTodos();
       }
 
       async function initializeFeed() {
@@ -337,6 +824,7 @@
           await ensureDashboardSession();
           loadRecentRecords();
           initSSE();
+          initTodoListeners();
         } catch (error) {
           feedContainer.textContent = error.message;
         }
