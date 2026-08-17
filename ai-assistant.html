@@ -405,8 +405,8 @@
             throw new Error(`Gateway returned HTTP ${res.status}: ${errText}`);
           }
 
-          const result = await res.json();
-          const replyText = result.reply || 'No response from server.';
+          const result = await res.json().catch(() => ({ reply: 'Failed to parse JSON response.' }));
+          const replyText = (result && result.reply) ? result.reply : 'No response from server.';
 
           // Update loading message with reply
           const loader = document.getElementById(loadingId);
