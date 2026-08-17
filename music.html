@@ -585,23 +585,37 @@
           progressBox.style.display = 'none';
           fileInput.value = '';
           if (xhr.status >= 200 && xhr.status < 300) {
-            const res = JSON.parse(xhr.responseText);
-            showToast(`🎵 Uploaded: ${file.name}`);
+            try {
+              const res = JSON.parse(xhr.responseText);
+              showToast(`🎵 Uploaded: ${file.name}`);
+            } catch (e) {
+              showToast(`🎵 Uploaded: ${file.name}`);
+            }
             loadTracks();
           } else {
-            try {
-              const err = JSON.parse(xhr.responseText);
-              showToast(`❌ Error: ${err.detail || 'Upload failed'}`);
-            } catch (e) {
-              showToast('❌ Upload failed.');
+            let errorMsg = `HTTP ${xhr.status}`;
+            if (xhr.status === 413) {
+              errorMsg = 'File too large for server proxy (HTTP 413)';
+            } else if (xhr.status === 401) {
+              errorMsg = 'Authentication required (HTTP 401)';
+            } else {
+              try {
+                const err = JSON.parse(xhr.responseText);
+                errorMsg = err.detail || err.message || errorMsg;
+              } catch (e) {
+                if (xhr.responseText) {
+                  errorMsg = `${xhr.responseText.replace(/<[^>]*>/g, '').trim().slice(0, 60)}`;
+                }
+              }
             }
+            showToast(`❌ Error: ${errorMsg}`);
           }
         };
 
         xhr.onerror = () => {
           progressBox.style.display = 'none';
           fileInput.value = '';
-          showToast('❌ Network error during upload.');
+          showToast('❌ Network error during upload. Please check connection.');
         };
 
         xhr.send(formData);

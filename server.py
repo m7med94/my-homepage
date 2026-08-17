@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import secrets
+import shutil
 import sqlite3
 import time
 import urllib.request
@@ -567,20 +568,17 @@ async def upload_music_file(
 
     dest_path = os.path.join(MUSIC_DIR, safe_filename)
     
-    # Write file safely
+    # Stream file to disk efficiently in chunks
     try:
-        contents = await file.read()
-        if len(contents) > 100 * 1024 * 1024:  # 100MB limit
-            raise HTTPException(status_code=413, detail="File too large (max 100MB)")
-            
-        with open(dest_path, "wb") as f:
-            f.write(contents)
-    except HTTPException:
-        raise
+        with open(dest_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write file to disk: {str(e)}")
+    finally:
+        await file.close()
 
-    file_size_mb = round(len(contents) / (1024 * 1024), 2)
+    file_size_bytes = os.path.getsize(dest_path)
+    file_size_mb = round(file_size_bytes / (1024 * 1024), 2)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # Broadcast notification to active SSE listeners
