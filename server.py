@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Set, Dict, Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, Query, status, Response, File, UploadFile
+from fastapi import FastAPI, Header, HTTPException, Request, Query, status, Response, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -544,7 +544,7 @@ def list_music_files(request: Request):
         "tracks": tracks,
     }
 
-@app.post("/api/v1/music/upload", status_code=status.HTTP_201_CREATED, summary="Upload Music File")
+@app.post("/api/v1/music/upload", status_code=status.HTTP_201_CREATED, summary="Upload Music File (Single Part)")
 async def upload_music_file(
     request: Request,
     file: UploadFile = File(...),
@@ -605,6 +605,86 @@ async def upload_music_file(
             "url": f"/music/{urllib.parse.quote(safe_filename)}",
             "created_at": now_iso,
         }
+    }
+
+@app.post("/api/v1/music/upload-chunk", summary="Upload Music Chunk (Bypasses Proxy Limits)")
+async def upload_music_chunk(
+    request: Request,
+    file: UploadFile = File(...),
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    filename: str = Form(...),
+):
+    require_dashboard_session(request)
+    
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported format '{ext}'")
+
+    clean_id = "".join(c for c in upload_id if c.isalnum() or c in "-_")[:64]
+    safe_filename = "".join(c for c in filename if c.isalnum() or c in "._- ").strip()
+    if not safe_filename:
+        safe_filename = f"track_{uuid.uuid4().hex[:8]}{ext}"
+
+    temp_path = os.path.join(MUSIC_DIR, f".tmp_{clean_id}_{safe_filename}")
+    
+    try:
+        # Append chunk to temp file
+        mode = "wb" if chunk_index == 0 else "ab"
+        with open(temp_path, mode) as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write chunk {chunk_index}: {str(e)}")
+    finally:
+        await file.close()
+
+    # If this was the last chunk, finalize the file
+    if chunk_index + 1 >= total_chunks:
+        dest_path = os.path.join(MUSIC_DIR, safe_filename)
+        if os.path.exists(dest_path):
+            try:
+                os.remove(dest_path)
+            except Exception:
+                pass
+        os.rename(temp_path, dest_path)
+
+        file_size_bytes = os.path.getsize(dest_path)
+        file_size_mb = round(file_size_bytes / (1024 * 1024), 2)
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Broadcast SSE notification
+        notification = {
+            "type": "music_uploaded",
+            "filename": safe_filename,
+            "size_mb": file_size_mb,
+            "timestamp": now_iso,
+        }
+        for q in list(subscribers):
+            try:
+                q.put_nowait(json.dumps(notification))
+            except Exception:
+                subscribers.discard(q)
+
+        return {
+            "status": "success",
+            "completed": True,
+            "message": f"Track '{safe_filename}' uploaded successfully ({file_size_mb} MB)",
+            "track": {
+                "filename": safe_filename,
+                "title": os.path.splitext(safe_filename)[0],
+                "extension": ext.replace(".", "").upper(),
+                "size_mb": file_size_mb,
+                "url": f"/music/{urllib.parse.quote(safe_filename)}",
+                "created_at": now_iso,
+            }
+        }
+
+    return {
+        "status": "success",
+        "completed": False,
+        "chunk_index": chunk_index,
+        "total_chunks": total_chunks,
     }
 
 @app.delete("/api/v1/music/{filename}", summary="Delete Music File")

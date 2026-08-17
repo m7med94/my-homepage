@@ -561,64 +561,54 @@
         }
       });
 
-      function handleFileUpload(file) {
-        const formData = new FormData();
-        formData.append('file', file);
-
+      async function handleFileUpload(file) {
         progressBox.style.display = 'flex';
         uploadingFileName.textContent = file.name;
         progressBarFill.style.width = '0%';
         uploadPercentage.textContent = '0%';
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/v1/music/upload', true);
+        // 512 KB per slice — guaranteed to pass through any proxy or Docker container limit
+        const CHUNK_SIZE = 512 * 1024;
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const uploadId = 'up_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
 
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
+        try {
+          for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            const start = chunkIndex * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunkBlob = file.slice(start, end);
+
+            const formData = new FormData();
+            formData.append('file', chunkBlob, file.name);
+            formData.append('upload_id', uploadId);
+            formData.append('chunk_index', chunkIndex.toString());
+            formData.append('total_chunks', totalChunks.toString());
+            formData.append('filename', file.name);
+
+            const res = await fetch('/api/v1/music/upload-chunk', {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!res.ok) {
+              const errBody = await res.text();
+              throw new Error(`Upload failed on chunk ${chunkIndex + 1}/${totalChunks} (HTTP ${res.status}): ${errBody.slice(0, 60)}`);
+            }
+
+            const percent = Math.round(((chunkIndex + 1) / totalChunks) * 100);
             progressBarFill.style.width = percent + '%';
             uploadPercentage.textContent = percent + '%';
           }
-        };
 
-        xhr.onload = () => {
           progressBox.style.display = 'none';
           fileInput.value = '';
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const res = JSON.parse(xhr.responseText);
-              showToast(`🎵 Uploaded: ${file.name}`);
-            } catch (e) {
-              showToast(`🎵 Uploaded: ${file.name}`);
-            }
-            loadTracks();
-          } else {
-            let errorMsg = `HTTP ${xhr.status}`;
-            if (xhr.status === 413) {
-              errorMsg = 'File too large for server proxy (HTTP 413)';
-            } else if (xhr.status === 401) {
-              errorMsg = 'Authentication required (HTTP 401)';
-            } else {
-              try {
-                const err = JSON.parse(xhr.responseText);
-                errorMsg = err.detail || err.message || errorMsg;
-              } catch (e) {
-                if (xhr.responseText) {
-                  errorMsg = `${xhr.responseText.replace(/<[^>]*>/g, '').trim().slice(0, 60)}`;
-                }
-              }
-            }
-            showToast(`❌ Error: ${errorMsg}`);
-          }
-        };
-
-        xhr.onerror = () => {
+          showToast(`🎵 Uploaded: ${file.name}`);
+          loadTracks();
+        } catch (err) {
           progressBox.style.display = 'none';
           fileInput.value = '';
-          showToast('❌ Network error during upload. Please check connection.');
-        };
-
-        xhr.send(formData);
+          showToast(`❌ Error: ${err.message}`);
+        }
       }
 
       // Track List & Playback Controls
