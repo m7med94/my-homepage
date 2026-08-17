@@ -1233,7 +1233,29 @@ async def ai_chat(req: ChatRequest, request: Request):
     except Exception as e:
         return {"status": "error", "reply": f"AI Service Error: {str(e)}"}
 
-# 16. Universal Server-Side Agent Gateway & Dynamic Plugin Dispatcher
+# =========================================================================================
+# 16. UNIVERSAL SERVER-SIDE AGENT GATEWAY & DYNAMIC PLUGINS
+# =========================================================================================
+# 🤖 [FOR FUTURE AGENTS & DEVELOPERS — HOW TO ADD NEW VOICE TOOLS / CAPABILITIES]:
+#
+# DO NOT code or re-flash the ESP32! The ESP32 is a thin client that routes all instructions here.
+#
+# To add a new tool or voice capability:
+#   OPTION A (Preferred - Modular Plugin):
+#     Create a new Python file in the `plugins/` directory (e.g. `plugins/weather.py`, `plugins/home_assistant.py`).
+#     Define:
+#       def handle_intent(instruction: str, context: str = "") -> Optional[str]:
+#           if "your keyword or trigger" in instruction.lower():
+#               # Execute your custom logic, database query, or API call
+#               return "Text response that the ESP32 will speak to the user"
+#           return None
+#
+#   OPTION B (Direct Handler in server.py):
+#     Add a new intent branch inside `dispatch_agent_instruction()` below.
+#
+# Any plugin added to `plugins/` is automatically discovered and loaded on server restart.
+# =========================================================================================
+
 def execute_server_plugins(instruction: str, context: str = "") -> Optional[str]:
     """Dynamically discovers and executes any custom Python plugins placed in the plugins/ folder."""
     if not os.path.exists(PLUGINS_DIR):
