@@ -307,15 +307,12 @@ async def ai_chat(req: ChatRequest):
         }
 
     def clean_reply(text: str) -> str:
+        if not text:
+            return "Hello! SensorsHub AI Copilot is online. How can I assist you with your smart devices today?"
         text = text.strip()
-        if "* User Role:" in text or "* Persona:" in text or "* Thoughts:" in text:
-            lines = [l.strip() for l in text.split("\n") if l.strip()]
-            for l in reversed(lines):
-                if l.startswith('"') and l.endswith('"'):
-                    return l.strip('"')
-                if not l.startswith("*") and not l.startswith("Option "):
-                    return l
-        return text
+        if "<thought>" in text and "</thought>" in text:
+            text = text.split("</thought>")[-1].strip()
+        return text or "Hello! How can I help you today?"
 
     is_gemini = (
         api_key.startswith("AIza")
@@ -326,14 +323,19 @@ async def ai_chat(req: ChatRequest):
 
     if is_gemini:
         payload = {
+            "system_instruction": {
+                "parts": [{
+                    "text": "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. Answer naturally, informatively, and concisely in 1-3 sentences in English."
+                }]
+            },
             "contents": [{
                 "parts": [{
-                    "text": f"{system_instruction}\n{telemetry_context}\n\nQuestion: {req.message}"
+                    "text": f"{telemetry_context}\n\nUser Message: {req.message}"
                 }]
             }],
             "generationConfig": {
-                "temperature": 0.4,
-                "maxOutputTokens": 250
+                "temperature": 0.5,
+                "maxOutputTokens": 400
             }
         }
         req_data = json.dumps(payload).encode("utf-8")
