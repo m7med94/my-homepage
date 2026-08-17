@@ -20,6 +20,7 @@ from backend.config import (
     PLUGINS_DIR,
     ALLOWED_AUDIO_EXTENSIONS,
     ACTIVE_GEMINI_MODEL,
+    is_plugin_enabled,
     require_dashboard_session,
     enforce_rate_limit,
 )
@@ -59,11 +60,15 @@ class AgentDispatchRequest(BaseModel):
 # =========================================================================================
 
 def execute_server_plugins(instruction: str, context: str = "") -> Optional[tuple[str, str]]:
-    """Dynamically discovers and executes any custom Python plugins placed in the plugins/ folder."""
+    """Dynamically discovers and executes enabled Python plugins placed in the plugins/ folder."""
     if not os.path.exists(PLUGINS_DIR):
         return None
     for fname in sorted(os.listdir(PLUGINS_DIR)):
-        if fname.endswith(".py") and not fname.startswith("__"):
+        if fname.endswith(".py") and not fname.startswith("__") and not fname.startswith("."):
+            # Check plugin whitelist configuration
+            if not is_plugin_enabled(fname):
+                continue
+
             fpath = os.path.join(PLUGINS_DIR, fname)
             try:
                 mod_name = f"plugin_{os.path.splitext(fname)[0]}"
@@ -111,7 +116,7 @@ async def ai_chat(req: ChatRequest, request: Request):
                     todo_context = "\n[Current User To-Do List]: No pending tasks."
 
             if os.path.exists(MUSIC_DIR):
-                m_files = [os.path.splitext(f)[0] for f in sorted(os.listdir(MUSIC_DIR)) if os.path.splitext(f)[1].lower() in ALLOWED_AUDIO_EXTENSIONS]
+                m_files = [os.path.splitext(f)[0] for f in sorted(os.listdir(MUSIC_DIR)) if os.path.splitext(f)[1].lower() in ALLOWED_AUDIO_EXTENSIONS and not f.startswith(".")]
                 if m_files:
                     music_context = f"\n[Available Music Library on Server]: {', '.join(m_files[:10])}"
         except Exception:
@@ -125,7 +130,7 @@ async def ai_chat(req: ChatRequest, request: Request):
     if not api_key:
         return {
             "status": "warning",
-            "reply": "⚠️ Server AI Key not set in `.env`. Please add `GEMINI_API_KEY=\"...\"` to `.env`.",
+            "reply": "⚠️ Server AI Key not configured in environment. Please add GEMINI_API_KEY to your server configuration.",
         }
 
     is_gemini = (
@@ -202,7 +207,7 @@ async def ai_chat(req: ChatRequest, request: Request):
 
         return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
 
-    # OpenAI / Groq Compatible Fallback
+    # OpenAI / Groq Compatible Fallback (executed asynchronously in thread pool)
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
     model = "llama-3.1-8b-instant" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "gpt-4o-mini"
 
@@ -214,7 +219,7 @@ async def ai_chat(req: ChatRequest, request: Request):
         ]
     }
 
-    try:
+    def run_openai_fallback():
         req_data = json.dumps(payload).encode("utf-8")
         req_obj = urllib.request.Request(
             openai_url,
@@ -224,8 +229,11 @@ async def ai_chat(req: ChatRequest, request: Request):
         )
         with urllib.request.urlopen(req_obj, timeout=15) as response:
             res_body = json.loads(response.read().decode("utf-8"))
-            reply = res_body["choices"][0]["message"]["content"]
-            return {"status": "success", "reply": reply.strip()}
+            return res_body["choices"][0]["message"]["content"]
+
+    try:
+        reply = await asyncio.to_thread(run_openai_fallback)
+        return {"status": "success", "reply": reply.strip()}
     except Exception as e:
         return {"status": "error", "reply": f"AI Service Error: {str(e)}"}
 

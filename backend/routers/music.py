@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
 from backend.config import (
@@ -18,11 +18,12 @@ from backend.config import (
     ALLOWED_AUDIO_EXTENSIONS,
     MAX_UPLOAD_MB,
     MAX_UPLOAD_BYTES,
+    sanitize_filename,
     validate_audio_magic_bytes,
     require_dashboard_session,
 )
 from backend.events import subscribers
-from backend.audio import convert_to_esp32_opus
+from backend.audio import convert_to_esp32_opus, is_ffmpeg_available
 
 router = APIRouter(tags=["Music & Playlists"])
 
@@ -145,6 +146,7 @@ def list_music_files(request: Request):
 @router.post("/api/v1/music/upload", status_code=status.HTTP_201_CREATED, summary="Upload Music File (Single Part)")
 async def upload_music_file(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
     """Uploads a single music file and converts it to ESP32 Opus with strict size limits & signature validation."""
@@ -171,10 +173,7 @@ async def upload_music_file(
         except ValueError:
             pass
 
-    safe_filename = "".join(c for c in file.filename if c.isalnum() or c in "._- ").strip()
-    if not safe_filename:
-        safe_filename = f"track_{uuid.uuid4().hex[:8]}{ext}"
-
+    safe_filename = sanitize_filename(file.filename)
     dest_path = os.path.join(MUSIC_DIR, safe_filename)
     total_bytes_read = 0
     chunk_size = 64 * 1024  # 64KB stream chunks
@@ -225,7 +224,8 @@ async def upload_music_file(
     file_size_mb = round(file_size_bytes / (1024 * 1024), 2)
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    convert_to_esp32_opus(dest_path)
+    # Schedule non-blocking background transcode to 16kHz OGG Opus
+    background_tasks.add_task(convert_to_esp32_opus, dest_path)
 
     notification = {
         "type": "music_uploaded",
@@ -255,6 +255,7 @@ async def upload_music_file(
 @router.post("/api/v1/music/upload-chunk", summary="Upload Music Chunk (Bypasses Proxy Limits)")
 async def upload_music_chunk(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     upload_id: str = Form(...),
     chunk_index: int = Form(...),
@@ -268,9 +269,7 @@ async def upload_music_chunk(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported format '{ext}'")
 
     clean_id = "".join(c for c in upload_id if c.isalnum() or c in "-_")[:64]
-    safe_filename = "".join(c for c in filename if c.isalnum() or c in "._- ").strip()
-    if not safe_filename:
-        safe_filename = f"track_{uuid.uuid4().hex[:8]}{ext}"
+    safe_filename = sanitize_filename(filename)
 
     temp_path = os.path.join(MUSIC_DIR, f".tmp_{clean_id}_{safe_filename}")
     
@@ -319,7 +318,8 @@ async def upload_music_chunk(
         file_size_mb = round(file_size_bytes / (1024 * 1024), 2)
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        convert_to_esp32_opus(dest_path)
+        # Schedule non-blocking background transcode to 16kHz OGG Opus
+        background_tasks.add_task(convert_to_esp32_opus, dest_path)
 
         notification = {
             "type": "music_uploaded",

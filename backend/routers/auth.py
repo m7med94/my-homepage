@@ -13,6 +13,7 @@ from backend.config import (
     ACTIVE_GEMINI_MODEL,
 )
 from backend.events import subscribers
+from backend.audio import is_ffmpeg_available
 
 router = APIRouter(tags=["Auth & Health"])
 
@@ -48,5 +49,6 @@ def health_check():
         "active_sse_subscribers": len(subscribers),
         "ai_server_key_configured": api_key_configured,
         "active_gemini_model": ACTIVE_GEMINI_MODEL,
+        "ffmpeg_available": is_ffmpeg_available(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import ALLOWED_ORIGINS, MUSIC_DIR
+from backend.config import ALLOWED_ORIGINS, MUSIC_DIR, validate_production_secrets
 from backend.database import init_db
 from backend.routers import (
     auth as auth_router,
@@ -16,6 +16,9 @@ from backend.routers import (
 
 # 1. Initialize SQLite database schemas & WAL mode
 init_db()
+
+# 2. Validate environment configuration and production secrets
+validate_production_secrets()
 
 # 2. Initialize FastAPI Application
 app = FastAPI(

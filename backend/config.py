@@ -16,9 +16,48 @@ os.makedirs(PLUGINS_DIR, exist_ok=True)
 # Allowed audio formats for music streaming and uploading
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
 
+# DB Path — configurable & absolute
+DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "esp32_telemetry.db"))
+
 # Upload security limits
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+def sanitize_filename(filename: str, fallback_prefix: str = "track") -> str:
+    """
+    Strict filename sanitization preventing path traversal (../, ..\\), null-bytes,
+    hidden files, and unsafe characters across all filesystems.
+    """
+    import re
+    # Extract only the base name
+    clean = os.path.basename(filename.strip().replace("\\", "/"))
+    # Remove null bytes and path separators
+    clean = clean.replace("\0", "").replace("/", "").replace("\\", "")
+    # Remove leading dots to avoid hidden files
+    clean = re.sub(r"^\.+", "", clean)
+    # Allow alphanumeric, hyphens, underscores, dots, and spaces
+    clean = re.sub(r"[^a-zA-Z0-9_\-\. ]", "", clean).strip()
+    
+    name_part, ext_part = os.path.splitext(clean)
+    ext_part = ext_part.lower()
+    
+    if not name_part or not ext_part:
+        import uuid
+        ext_clean = ext_part if ext_part in ALLOWED_AUDIO_EXTENSIONS else ".mp3"
+        return f"{fallback_prefix}_{uuid.uuid4().hex[:8]}{ext_clean}"
+        
+    return f"{name_part}{ext_part}"
+
+# Plugin execution whitelist
+ENABLED_PLUGINS_RAW = os.getenv("ENABLED_PLUGINS", "*")
+ENABLED_PLUGINS = [p.strip() for p in ENABLED_PLUGINS_RAW.split(",") if p.strip()]
+
+def is_plugin_enabled(plugin_filename: str) -> bool:
+    """Checks whether a plugin is enabled by whitelist configuration."""
+    if "*" in ENABLED_PLUGINS or "all" in ENABLED_PLUGINS:
+        return True
+    base_name = os.path.splitext(plugin_filename)[0]
+    return plugin_filename in ENABLED_PLUGINS or base_name in ENABLED_PLUGINS
 
 def validate_audio_magic_bytes(header_bytes: bytes, filename: str) -> bool:
     """
@@ -44,6 +83,31 @@ def validate_audio_magic_bytes(header_bytes: bytes, filename: str) -> bool:
     if ext in {".m4a", ".aac"}:
         return b"ftyp" in header_bytes[:16] or (header_bytes[0] == 0xFF and (header_bytes[1] & 0xF6) == 0xF0) or header_bytes.startswith(b"ID3")
     return True
+
+def validate_production_secrets():
+    """
+    Validates required secrets. If STRICT_SECURITY or ENV=production is set,
+    fails fast on startup if critical tokens are absent.
+    """
+    strict = (
+        os.getenv("STRICT_SECURITY", "false").lower() in ("true", "1")
+        or os.getenv("ENV", "").lower() == "production"
+        or os.getenv("NODE_ENV", "").lower() == "production"
+    )
+    missing = []
+    if not os.getenv("DEVICE_API_TOKEN"):
+        missing.append("DEVICE_API_TOKEN")
+    if not os.getenv("DASHBOARD_API_TOKEN"):
+        missing.append("DASHBOARD_API_TOKEN")
+    if not (os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")):
+        missing.append("AI_API_KEY / GEMINI_API_KEY")
+
+    if missing:
+        msg = f"[Security Warning] Missing environment secrets: {', '.join(missing)}."
+        if strict:
+            raise RuntimeError(f"[FATAL] STRICT_SECURITY is enabled. Server cannot boot without: {', '.join(missing)}")
+        else:
+            print(f"{msg} Running in open/development mode.")
 
 # Automatic local .env loader
 def load_env():
