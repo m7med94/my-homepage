@@ -188,15 +188,14 @@ function requestNotificationPermission() {
 
 /** Connect to FastAPI Live SSE Notification Stream */
 function connectToEsp32Sse() {
-  const host = window.location.hostname || '104.197.63.204';
-  const sseUrl = `http://${host}:8000/api/v1/events/stream`;
+  const sseUrl = '/api/v1/events/stream';
 
   try {
     sseConnection = new EventSource(sseUrl);
 
     sseConnection.onopen = () => {
       console.log('Connected to ESP32 Live Telemetry Notification Gateway');
-      logEvent('Real-time SSE notification link established with ESP32 Gateway (port 8000).', 'info');
+      logEvent('Real-time SSE notification link established with ESP32 Gateway.', 'info');
     };
 
     sseConnection.onmessage = (e) => {

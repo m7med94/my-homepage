@@ -192,9 +192,8 @@
     </footer>
 
     <script>
-      const host = window.location.hostname || '104.197.63.204';
-      const apiUrl = `http://${host}:8000/api/v1/device/data`;
-      const sseUrl = `http://${host}:8000/api/v1/events/stream`;
+      const apiUrl = '/api/v1/device/data';
+      const sseUrl = '/api/v1/events/stream';
 
       const feedContainer = document.getElementById('liveFeedContainer');
 
