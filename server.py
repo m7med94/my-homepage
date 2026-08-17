@@ -333,8 +333,8 @@ def get_device_stats(request: Request):
         "latest_transmission": dict(latest_entry) if latest_entry else None,
     }
 
-# 11. POST AI Assistant Chat Endpoint (Server-Side High-Speed Inference)
-@app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Telemetry Awareness")
+# 11. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
+@app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry Awareness")
 async def ai_chat(req: ChatRequest, request: Request):
     global ACTIVE_GEMINI_MODEL
     require_dashboard_session(request)
@@ -356,7 +356,7 @@ async def ai_chat(req: ChatRequest, request: Request):
             pass
 
     system_instruction = (
-        "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
+        "You are SensorsHub ServerAI for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
         "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs when relevant."
     )
 
