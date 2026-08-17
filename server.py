@@ -297,31 +297,27 @@ async def ai_chat(req: ChatRequest):
                 if "candidates" in res_body and res_body["candidates"]:
                     cand = res_body["candidates"][0]
                     if "content" in cand and "parts" in cand["content"]:
-                        full_text = "".join([p.get("text", "") for p in cand["content"]["parts"] if "text" in p])
-                        if full_text.strip():
-                            return full_text.strip()
+                        # Extract only non-thought response parts for clean speech
+                        real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p and not p.get("thought", False)]
+                        if not real_parts:
+                            # Fallback if all parts had thought flag
+                            real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p]
+                        full_text = "".join(real_parts).strip()
+                        if full_text:
+                            return full_text
                 if "error" in res_body:
                     raise Exception(res_body["error"].get("message", "Unknown error"))
             return None
 
-        # First, fetch available models directly from Google for this key
-        discovered_models = []
-        try:
-            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            list_req = urllib.request.Request(list_url, method="GET")
-            with urllib.request.urlopen(list_req, timeout=10) as list_res:
-                list_data = json.loads(list_res.read().decode("utf-8"))
-                for m in list_data.get("models", []):
-                    if "generateContent" in m.get("supportedGenerationMethods", []):
-                        discovered_models.append(m["name"].replace("models/", ""))
-        except urllib.error.HTTPError as he:
-            err_msg = he.read().decode("utf-8")
-            return {"status": "error", "reply": f"Google Gemini Key Error ({he.code}): {err_msg}"}
-        except Exception as e:
-            return {"status": "error", "reply": f"Connection to Google AI failed: {str(e)}"}
+        # Priority 2025/2026 models discovered for this key
+        candidate_models = [
+            "gemini-2.5-flash",
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro",
+            "gemini-pro-latest"
+        ]
 
-        candidate_models = discovered_models or ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
-        
         last_err = ""
         for m in candidate_models:
             try:
