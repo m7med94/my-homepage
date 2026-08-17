@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Smart Assistant — SensorsHub</title>
+    <title>SensorsHub AI Copilot — Smart IoT Voice Assistant</title>
     <meta
       name="description"
-      content="Interactive AI Assistant with Voice Speech recognition, Telemetry Context awareness, and custom API key support."
+      content="Conversational AI Assistant powered by Server-Side LLM with Telemetry Context awareness and Voice STT/TTS."
     />
     <!-- Anti-cache headers -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -24,7 +24,7 @@
     <style>
       .chat-wrapper {
         display: grid;
-        grid-template-columns: 320px 1fr;
+        grid-template-columns: 280px 1fr;
         gap: 24px;
         min-height: 600px;
       }
@@ -66,19 +66,19 @@
       .msg-row {
         display: flex;
         gap: 12px;
-        max-width: 82%;
+        max-width: 84%;
       }
       .msg-row.user {
         align-self: flex-end;
         flex-direction: row-reverse;
       }
       .msg-avatar {
-        width: 34px;
-        height: 34px;
+        width: 36px;
+        height: 36px;
         border-radius: 50%;
         display: grid;
         place-items: center;
-        font-size: 0.9rem;
+        font-size: 1rem;
         flex-shrink: 0;
       }
       .msg-row.assistant .msg-avatar {
@@ -155,13 +155,6 @@
       .send-btn:hover {
         transform: scale(1.05);
       }
-      .key-status-indicator {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.75rem;
-        color: var(--text-dim);
-      }
       @media (max-width: 860px) {
         .chat-wrapper {
           grid-template-columns: 1fr;
@@ -201,7 +194,7 @@
         <div class="nav-actions">
           <div class="status-indicator">
             <span class="pulse-dot"></span>
-            <span>AI Ready</span>
+            <span>Server AI Gateway</span>
           </div>
         </div>
       </div>
@@ -210,32 +203,18 @@
     <!-- Main Content -->
     <main class="container main-layout" style="gap: 24px;">
       <div class="chat-wrapper">
-        <!-- Settings & Telemetry Context Sidebar -->
+        <!-- Sidebar Controls -->
         <aside class="chat-sidebar">
           <div>
-            <h3 style="font-size: 1rem; color: #fff; margin-bottom: 4px;">AI Configuration</h3>
-            <p style="font-size: 0.78rem; color: var(--text-dim);">Set your API Key to enable live smart conversational queries.</p>
+            <h3 style="font-size: 1rem; color: #fff; margin-bottom: 4px;">AI Assistant</h3>
+            <p style="font-size: 0.78rem; color: var(--text-dim);">Integrated with your server backend & live sensor telemetry.</p>
           </div>
 
-          <!-- API Key Setting Form -->
-          <div class="form-group">
-            <label style="font-size: 0.75rem; color: var(--text-muted);">Select AI Provider</label>
-            <select id="aiProviderSelect" class="custom-select" style="width: 100%;">
-              <option value="gemini">Google Gemini AI</option>
-              <option value="openai">OpenAI (GPT-4o / GPT-3.5)</option>
-              <option value="groq">Groq (Ultra-Fast Llama-3)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label style="font-size: 0.75rem; color: var(--text-muted);">Enter Your API Key</label>
-            <input type="password" id="apiKeyInput" placeholder="Paste your API key here..." style="background: rgba(7, 12, 20, 0.8); border: 1px solid var(--border); padding: 10px 14px; border-radius: var(--radius-md); color: #fff; font-size: 0.85rem; outline: none; width: 100%;" />
-            <div class="key-status-indicator" style="margin-top: 6px;">
-              <span id="keySaveBadge">Key is stored locally in your browser.</span>
+          <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: var(--radius-md); padding: 12px 14px;">
+            <div style="font-size: 0.78rem; color: var(--primary); font-weight: 600; margin-bottom: 4px;">🔒 Server-Side Secure</div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+              AI requests are processed directly on your server.
             </div>
-            <button id="btnSaveKey" class="pill-btn" style="margin-top: 8px; justify-content: center; background: rgba(56, 189, 248, 0.15); color: var(--primary); border-color: var(--primary); width: 100%;">
-              Save API Key
-            </button>
           </div>
 
           <hr style="border: none; border-top: 1px solid var(--border);" />
@@ -275,7 +254,7 @@
               </div>
               <div>
                 <h3 style="font-size: 0.98rem; color: #fff;">SensorsHub AI Copilot</h3>
-                <span style="font-size: 0.72rem; color: var(--text-dim);">Ask questions, control devices, or analyze telemetry.</span>
+                <span style="font-size: 0.72rem; color: var(--text-dim);">Ask questions, inspect sensors, or analyze voice telemetry.</span>
               </div>
             </div>
             <button id="btnClearChat" class="pill-btn" style="font-size: 0.75rem; padding: 4px 10px;">Clear Chat</button>
@@ -286,7 +265,7 @@
             <div class="msg-row assistant">
               <div class="msg-avatar">🤖</div>
               <div class="msg-bubble">
-                Hello Mohammed! I am your <strong>SensorsHub AI Assistant</strong>. You can ask me questions about your connected sensors, voice commands, or general topics. Please enter your API Key in the left sidebar to begin!
+                Hello Mohammed! I am your <strong>SensorsHub AI Assistant</strong>, connected directly to your server and live XiaoZhi ESP32 device. How can I help you today?
               </div>
             </div>
           </div>
@@ -314,7 +293,7 @@
           </div>
           <span>Sensors<strong>Hub</strong></span>
         </div>
-        <p class="footer-copy">© <span id="year"></span> SensorsHub AI. Connected to Local Telemetry &amp; Cloud LLMs.</p>
+        <p class="footer-copy">© <span id="year"></span> SensorsHub AI. Connected to Server-Side AI Gateway.</p>
         <div class="footer-links">
           <a href="index.html">← Sensors Dashboard</a>
           <a href="esp32-assistant.html">🎙️ ESP32 Feed</a>
@@ -323,30 +302,10 @@
     </footer>
 
     <script>
-      const apiKeyInput = document.getElementById('apiKeyInput');
-      const aiProviderSelect = document.getElementById('aiProviderSelect');
       const messagesBox = document.getElementById('messagesBox');
       const userInput = document.getElementById('userInput');
       const chatForm = document.getElementById('chatForm');
       const btnMic = document.getElementById('btnMic');
-
-      // Load saved API key from localStorage
-      const savedKey = localStorage.getItem('sensors_ai_key');
-      const savedProvider = localStorage.getItem('sensors_ai_provider');
-      if (savedKey) apiKeyInput.value = savedKey;
-      if (savedProvider) aiProviderSelect.value = savedProvider;
-
-      document.getElementById('btnSaveKey').addEventListener('click', () => {
-        const key = apiKeyInput.value.trim();
-        const provider = aiProviderSelect.value;
-        if (!key) {
-          alert('Please enter a valid API key');
-          return;
-        }
-        localStorage.setItem('sensors_ai_key', key);
-        localStorage.setItem('sensors_ai_provider', provider);
-        alert('API Key saved securely in your browser!');
-      });
 
       // Suggested Prompt Buttons
       document.querySelectorAll('.prompt-btn').forEach(btn => {
@@ -416,31 +375,11 @@
         }
       }
 
-      // Fetch live sensor data from server to give AI real-time context
-      async function getLiveTelemetryContext() {
-        if (!document.getElementById('chkIncludeTelemetry').checked) return '';
-        try {
-          const res = await fetch('/api/v1/device/data?limit=10');
-          if (res.ok) {
-            const data = await res.json();
-            return `\n\n[Live System Telemetry Context:\n${JSON.stringify(data.data, null, 1)}]`;
-          }
-        } catch (e) {}
-        return '';
-      }
-
-      // Form Submit / Chat API Call
+      // Form Submit / Call Server-Side AI Endpoint
       chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = userInput.value.trim();
-        const apiKey = apiKeyInput.value.trim() || localStorage.getItem('sensors_ai_key');
-        const provider = aiProviderSelect.value;
-
         if (!text) return;
-        if (!apiKey) {
-          alert('Please enter and save your API Key in the left sidebar first!');
-          return;
-        }
 
         // Add user message
         appendMessage('user', text);
@@ -451,74 +390,18 @@
         appendMessage('assistant', 'Thinking...', loadingId);
 
         try {
-          const telemetryContext = await getLiveTelemetryContext();
-          let replyText = '';
+          const includeTelemetry = document.getElementById('chkIncludeTelemetry').checked;
+          const res = await fetch('/api/v1/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: text,
+              include_telemetry: includeTelemetry
+            })
+          });
 
-          if (provider === 'gemini') {
-            // Google Gemini API call
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{
-                  parts: [{
-                    text: `You are the SensorsHub IoT Smart Assistant for Mohammed's smart infrastructure and ESP32 nodes. Answer concisely and informatively.${telemetryContext}\n\nUser Question: ${text}`
-                  }]
-                }]
-              })
-            });
-            const result = await res.json();
-            if (result.candidates && result.candidates[0].content) {
-              replyText = result.candidates[0].content.parts[0].text;
-            } else if (result.error) {
-              replyText = `Error from Gemini: ${result.error.message}`;
-            }
-          } else if (provider === 'openai') {
-            // OpenAI API call
-            const res = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-              },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                  { role: 'system', content: `You are SensorsHub IoT Smart Assistant.${telemetryContext}` },
-                  { role: 'user', content: text }
-                ]
-              })
-            });
-            const result = await res.json();
-            if (result.choices && result.choices[0]) {
-              replyText = result.choices[0].message.content;
-            } else if (result.error) {
-              replyText = `Error from OpenAI: ${result.error.message}`;
-            }
-          } else if (provider === 'groq') {
-            // Groq API call
-            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-              },
-              body: JSON.stringify({
-                model: 'llama-3.1-8b-instant',
-                messages: [
-                  { role: 'system', content: `You are SensorsHub IoT Smart Assistant.${telemetryContext}` },
-                  { role: 'user', content: text }
-                ]
-              })
-            });
-            const result = await res.json();
-            if (result.choices && result.choices[0]) {
-              replyText = result.choices[0].message.content;
-            } else if (result.error) {
-              replyText = `Error from Groq: ${result.error.message}`;
-            }
-          }
+          const result = await res.json();
+          const replyText = result.reply || 'No response from server.';
 
           // Update loading message with reply
           const loader = document.getElementById(loadingId);
@@ -529,7 +412,7 @@
         } catch (err) {
           const loader = document.getElementById(loadingId);
           if (loader) {
-            loader.textContent = `Connection Error: Could not reach ${provider} API. Check your network or API Key.`;
+            loader.textContent = 'Connection Error: Could not reach the server AI gateway.';
           }
         }
       });

@@ -1,8 +1,11 @@
-# server.py — Production ESP32 AI Voice Assistant Backend Ingestion Service
+# server.py — Production ESP32 AI Voice Assistant Backend & AI Chat Ingestion Service
 import asyncio
 import json
+import os
 import sqlite3
 import time
+import urllib.request
+import urllib.error
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Set
@@ -15,8 +18,8 @@ from pydantic import BaseModel, Field
 # 1. Initialize FastAPI Application
 app = FastAPI(
     title="ESP32 AI Voice Assistant Telemetry Gateway",
-    description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices with live SSE notifications.",
-    version="1.1.0",
+    description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices with live SSE notifications and Server-Side AI Copilot.",
+    version="1.2.0",
 )
 
 # 2. CORS Middleware Configuration
@@ -52,20 +55,28 @@ def init_db():
 
 init_db()
 
-# 4. Incoming Payload Validation Schema
+# 4. Incoming Payload Validation Schemas
 class DevicePayload(BaseModel):
     device_id: str = Field(..., description="Unique Device ID or MAC Address", example="mo-project-c3")
     category: str = Field(..., description="Payload category (user_request, telemetry, alert, general)", example="user_request")
     data: str = Field(..., description="Voice transcript, sensor readings, or JSON payload", example="Turn on air conditioning")
     timestamp: Optional[int] = Field(None, description="Optional Unix timestamp from device")
 
+class ChatRequest(BaseModel):
+    message: str = Field(..., description="User question or prompt", example="What is the current temperature?")
+    include_telemetry: Optional[bool] = Field(True, description="Whether to include live sensor context")
+
 # 5. Health Check Endpoint
 @app.get("/health", summary="Health Check")
 def health_check():
+    api_key_configured = bool(
+        os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
+    )
     return {
         "status": "healthy",
         "service": "ESP32 Voice Telemetry Gateway",
         "active_sse_subscribers": len(subscribers),
+        "ai_server_key_configured": api_key_configured,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -78,12 +89,10 @@ async def event_stream(request: Request):
 
     async def sse_generator():
         try:
-            # Send initial connected message
             init_msg = json.dumps({"type": "connected", "message": "Listening for live ESP32 telemetry & voice events..."})
             yield f"data: {init_msg}\n\n"
 
             while True:
-                # Disconnect if client leaves
                 if await request.is_disconnected():
                     break
                 data = await queue.get()
@@ -103,7 +112,7 @@ async def event_stream(request: Request):
         }
     )
 
-# 7. POST Ingestion Endpoint (Ingests & Broadcasts Instant Notification)
+# 7. POST Ingestion Endpoint
 @app.post("/api/v1/device/data", status_code=status.HTTP_201_CREATED, summary="Ingest Device Payload")
 async def ingest_device_data(
     payload: DevicePayload,
@@ -114,7 +123,6 @@ async def ingest_device_data(
     client_ip = request.client.host if request.client else "unknown"
     entry_id = str(uuid.uuid4())
 
-    # Optional: Validate Authorization Token if provided
     if authorization and not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -137,7 +145,6 @@ async def ingest_device_data(
     duration_ms = round((time.time() - start_time) * 1000, 2)
     timestamp_iso = datetime.now(timezone.utc).isoformat()
     
-    # Form Notification Event Object
     notification_event = {
         "type": "esp32_data",
         "id": entry_id,
@@ -149,7 +156,7 @@ async def ingest_device_data(
         "latency_ms": duration_ms
     }
 
-    # Broadcast notification in real-time to all connected web dashboards / clients
+    # Broadcast notification in real-time to all connected web dashboards
     event_str = json.dumps(notification_event)
     for q in list(subscribers):
         try:
@@ -169,7 +176,7 @@ async def ingest_device_data(
         "broadcast_subscribers": len(subscribers),
     }
 
-# 8. GET Query Records Endpoint (AI Voice Assistant Query & Summary Interface)
+# 8. GET Query Records Endpoint
 @app.get("/api/v1/device/data", summary="Query Device Records & Voice Summary")
 def query_device_data(
     category: Optional[str] = Query(None, description="Filter by category (e.g. temperature, alert, general)"),
@@ -200,12 +207,11 @@ def query_device_data(
             "device_id": r["device_id"],
             "category": r["category"],
             "payload": r["payload_data"],
-            "payload_data": r["payload_data"],  # for UI backward-compatibility
+            "payload_data": r["payload_data"],
             "client_ip": r["client_ip"],
             "created_at": r["created_at"],
         })
 
-    # Generate a natural language summary for XiaoZhi AI Voice Assistant to speak
     if formatted_data:
         latest = formatted_data[0]
         cat_name = latest["category"].replace("_", " ")
@@ -221,7 +227,87 @@ def query_device_data(
         "summary": summary,
     }
 
+# 9. POST AI Assistant Chat Endpoint (Server-Side Key Resolution)
+@app.post("/api/v1/ai/chat", summary="Server-Side AI Chat with Telemetry Awareness")
+async def ai_chat(req: ChatRequest):
+    # Server-Side API Key Resolution
+    api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
+
+    # Fetch recent telemetry logs from database for AI context
+    telemetry_context = ""
+    if req.include_telemetry:
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 10").fetchall()
+                if logs:
+                    telemetry_context = "\n[Current IoT & ESP32 Live Telemetry Logs in Database]:\n" + "\n".join(
+                        [f"- ({r['created_at']}) Device '{r['device_id']}' [{r['category']}]: {r['payload_data']}" for r in logs]
+                    )
+        except Exception:
+            pass
+
+    system_instruction = (
+        "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
+        "Answer concisely, smartly, and informatively. If asked about sensor readings or ESP32 voice transmissions, "
+        "refer to the live telemetry logs provided below."
+    )
+
+    if not api_key:
+        return {
+            "status": "warning",
+            "reply": "⚠️ **Server AI Key Not Set Yet.**\n\nPlease set your API key on your server environment (e.g. `export AI_API_KEY='your-key'` or `export GEMINI_API_KEY='your-key'`), then restart `server.py`.\n\nHere is your local database status:\n" + (telemetry_context or "No telemetry records yet."),
+            "telemetry_included": bool(telemetry_context)
+        }
+
+    # If Gemini API Key
+    if api_key.startswith("AIza") or os.getenv("GEMINI_API_KEY") or (os.getenv("AI_API_KEY") and len(api_key) == 39):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"{system_instruction}\n{telemetry_context}\n\nUser Question: {req.message}"
+                }]
+            }]
+        }
+        try:
+            req_data = json.dumps(payload).encode("utf-8")
+            req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req_obj, timeout=15) as response:
+                res_body = json.loads(response.read().decode("utf-8"))
+                reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
+                return {"status": "success", "reply": reply}
+        except Exception as e:
+            return {"status": "error", "reply": f"AI Gateway Error: {str(e)}"}
+
+    # Default / OpenAI / Groq Compatible
+    openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
+    model = "llama-3.1-8b-instant" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "gpt-4o-mini"
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": f"{system_instruction}\n{telemetry_context}"},
+            {"role": "user", "content": req.message}
+        ]
+    }
+
+    try:
+        req_data = json.dumps(payload).encode("utf-8")
+        req_obj = urllib.request.Request(
+            openai_url,
+            data=req_data,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req_obj, timeout=15) as response:
+            res_body = json.loads(response.read().decode("utf-8"))
+            reply = res_body["choices"][0]["message"]["content"]
+            return {"status": "success", "reply": reply}
+    except Exception as e:
+        return {"status": "error", "reply": f"AI Service Error: {str(e)}"}
+
 if __name__ == "__main__":
     import uvicorn
-    print("Starting ESP32 Voice Assistant Backend Gateway on 0.0.0.0:8000 with Real-Time SSE Notifications...")
+    print("Starting ESP32 Voice Assistant Backend Gateway & Server-Side AI Copilot on 0.0.0.0:8000...")
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
