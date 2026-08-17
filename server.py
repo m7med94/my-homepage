@@ -153,9 +153,9 @@ init_db()
 
 # 4. Incoming Payload Validation Schemas
 class DevicePayload(BaseModel):
-    device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address", example="mo-project-c3")
-    category: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$", description="Payload category (user_request, telemetry, alert, general)", example="user_request")
-    data: str = Field(..., min_length=1, max_length=4096, description="Voice transcript, sensor readings, or JSON payload", example="Turn on air conditioning")
+    device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address")
+    category: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$", description="Payload category (user_request, telemetry, alert, general)")
+    data: str = Field(..., min_length=1, max_length=4096, description="Voice transcript, sensor readings, or JSON payload")
     timestamp: Optional[int] = Field(None, description="Optional Unix timestamp from device")
 
 class TodoCreate(BaseModel):
@@ -168,7 +168,7 @@ class TodoUpdate(BaseModel):
     completed: Optional[bool] = Field(None)
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt", example="What is the current temperature?")
+    message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt")
     include_telemetry: Optional[bool] = Field(True, description="Whether to include live sensor context")
 
 # 5. Dashboard session exchange. The dashboard token is never persisted in browser storage.
