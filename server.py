@@ -304,24 +304,24 @@ async def ai_chat(req: ChatRequest):
                     raise Exception(res_body["error"].get("message", "Unknown error"))
             return None
 
-        # Try cached model first
-        if ACTIVE_GEMINI_MODEL:
-            try:
-                ans = await asyncio.to_thread(run_gemini, ACTIVE_GEMINI_MODEL)
-                if ans:
-                    return {"status": "success", "reply": ans, "model": ACTIVE_GEMINI_MODEL}
-            except Exception:
-                ACTIVE_GEMINI_MODEL = None
+        # First, fetch available models directly from Google for this key
+        discovered_models = []
+        try:
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            list_req = urllib.request.Request(list_url, method="GET")
+            with urllib.request.urlopen(list_req, timeout=10) as list_res:
+                list_data = json.loads(list_res.read().decode("utf-8"))
+                for m in list_data.get("models", []):
+                    if "generateContent" in m.get("supportedGenerationMethods", []):
+                        discovered_models.append(m["name"].replace("models/", ""))
+        except urllib.error.HTTPError as he:
+            err_msg = he.read().decode("utf-8")
+            return {"status": "error", "reply": f"Google Gemini Key Error ({he.code}): {err_msg}"}
+        except Exception as e:
+            return {"status": "error", "reply": f"Connection to Google AI failed: {str(e)}"}
 
-        candidate_models = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-001",
-            "gemini-1.5-flash-002",
-            "gemini-2.0-flash-exp",
-            "gemini-2.5-flash",
-            "gemini-pro"
-        ]
-
+        candidate_models = discovered_models or ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+        
         last_err = ""
         for m in candidate_models:
             try:
@@ -339,7 +339,7 @@ async def ai_chat(req: ChatRequest):
                 last_err = str(e)
                 continue
 
-        return {"status": "error", "reply": f"Could not reach Gemini model: {last_err}"}
+        return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
 
     # OpenAI / Groq fallback
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
