@@ -1,19 +1,22 @@
 # server.py — Production ESP32 AI Voice Assistant Backend Ingestion Service
+import asyncio
+import json
+import sqlite3
 import time
 import uuid
-import sqlite3
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Set
 
 from fastapi import FastAPI, Header, HTTPException, Request, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 # 1. Initialize FastAPI Application
 app = FastAPI(
     title="ESP32 AI Voice Assistant Telemetry Gateway",
-    description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices.",
-    version="1.0.0",
+    description="REST API server to ingest real-time voice, telemetry, and event payloads from ESP32 XiaoZhi devices with live SSE notifications.",
+    version="1.1.0",
 )
 
 # 2. CORS Middleware Configuration
@@ -26,6 +29,9 @@ app.add_middleware(
 )
 
 DB_PATH = "esp32_telemetry.db"
+
+# In-memory list of active SSE subscriber queues for real-time notification broadcasting
+subscribers: Set[asyncio.Queue] = set()
 
 # 3. Database Initialization (SQLite with Indexed Fields)
 def init_db():
@@ -59,10 +65,45 @@ def health_check():
     return {
         "status": "healthy",
         "service": "ESP32 Voice Telemetry Gateway",
+        "active_sse_subscribers": len(subscribers),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-# 6. POST Ingestion Endpoint
+# 6. Real-Time SSE Notification Stream (Server-Sent Events)
+@app.get("/api/v1/events/stream", summary="Live Telemetry Event Stream")
+async def event_stream(request: Request):
+    """Server-Sent Events (SSE) stream to push instant notifications to dashboards whenever ESP32 transmits."""
+    queue = asyncio.Queue()
+    subscribers.add(queue)
+
+    async def sse_generator():
+        try:
+            # Send initial connected message
+            init_msg = json.dumps({"type": "connected", "message": "Listening for live ESP32 telemetry & voice events..."})
+            yield f"data: {init_msg}\n\n"
+
+            while True:
+                # Disconnect if client leaves
+                if await request.is_disconnected():
+                    break
+                data = await queue.get()
+                yield f"data: {data}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            subscribers.discard(queue)
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+# 7. POST Ingestion Endpoint (Ingests & Broadcasts Instant Notification)
 @app.post("/api/v1/device/data", status_code=status.HTTP_201_CREATED, summary="Ingest Device Payload")
 async def ingest_device_data(
     payload: DevicePayload,
@@ -96,8 +137,28 @@ async def ingest_device_data(
     duration_ms = round((time.time() - start_time) * 1000, 2)
     timestamp_iso = datetime.now(timezone.utc).isoformat()
     
+    # Form Notification Event Object
+    notification_event = {
+        "type": "esp32_data",
+        "id": entry_id,
+        "device_id": payload.device_id,
+        "category": payload.category,
+        "data": payload.data,
+        "client_ip": client_ip,
+        "timestamp": timestamp_iso,
+        "latency_ms": duration_ms
+    }
+
+    # Broadcast notification in real-time to all connected web dashboards / clients
+    event_str = json.dumps(notification_event)
+    for q in list(subscribers):
+        try:
+            q.put_nowait(event_str)
+        except Exception:
+            subscribers.discard(q)
+
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [201 CREATED] Device:{payload.device_id} | Cat:{payload.category} | IP:{client_ip} | Latency:{duration_ms}ms")
-    print(f"       Payload Data: {payload.data}")
+    print(f"       🎙️ Payload Data: {payload.data}")
 
     return {
         "status": "success",
@@ -105,9 +166,10 @@ async def ingest_device_data(
         "entry_id": entry_id,
         "device_id": payload.device_id,
         "received_at": timestamp_iso,
+        "broadcast_subscribers": len(subscribers),
     }
 
-# 7. GET Query Historical Records Endpoint
+# 8. GET Query Historical Records Endpoint
 @app.get("/api/v1/device/data", summary="Query Device Records")
 def query_device_data(
     device_id: Optional[str] = Query(None, description="Filter by device ID"),
@@ -138,6 +200,5 @@ def query_device_data(
 
 if __name__ == "__main__":
     import uvicorn
-    # Bind to 0.0.0.0 so ESP32 devices on the local LAN can connect
-    print("Starting ESP32 Voice Assistant Backend Gateway on 0.0.0.0:8000...")
+    print("Starting ESP32 Voice Assistant Backend Gateway on 0.0.0.0:8000 with Real-Time SSE Notifications...")
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

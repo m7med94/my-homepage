@@ -1,9 +1,9 @@
 /**
  * SensorsHub — Telemetry & IoT Dashboard Controller
- * Advanced Real-Time Monitoring, Sparkline Graphs & Diagnostics Engine
+ * Advanced Real-Time Monitoring, Live ESP32 Audio/Visual Notifications & SSE Ingestion
  */
 
-// Initial Sensor Fleet
+// Initial Sensor Fleet (including ESP32 XiaoZhi Voice Node)
 let sensors = [
   {
     id: 1,
@@ -109,20 +109,21 @@ let sensors = [
   },
   {
     id: 7,
-    name: 'Front Entry Motion Sentinel',
+    name: 'ESP32 XiaoZhi Voice Assistant',
     category: 'Security',
-    type: 'Motion',
-    location: 'Front Gateway',
-    unit: 'State',
+    type: 'Voice',
+    location: 'Central Gateway (mo-project-c3)',
+    unit: 'Event',
     minValue: 0,
-    maxValue: 1,
+    maxValue: 100,
     minNormal: 0,
-    maxNormal: 1,
-    currentValue: 0,
+    maxNormal: 100,
+    currentValue: 'Ready',
     status: 'online',
     accentColor: '#a855f7',
-    history: [0, 0, 0, 0, 0, 0, 0, 0],
+    history: [1, 1, 1, 1, 1, 1, 1, 1],
     lastUpdate: new Date(),
+    lastTranscript: 'Waiting for voice transmission...',
   }
 ];
 
@@ -133,6 +134,7 @@ let currentSort = 'default';
 let searchQuery = '';
 let nextSensorId = 8;
 let updateInterval = null;
+let sseConnection = null;
 
 // Icons dictionary based on sensor type
 const ICONS = {
@@ -142,6 +144,7 @@ const ICONS = {
   Power: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
   Pressure: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   Motion: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  Voice: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>`,
   Light: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
 };
 
@@ -151,7 +154,13 @@ function initApp() {
   renderSensors();
   updateTopMetrics();
   updateClock();
-  logEvent('System initialized. 7 telemetry nodes linked and operational.', 'info');
+  logEvent('System initialized. 7 telemetry nodes active.', 'info');
+
+  // Request browser notification permission
+  requestNotificationPermission();
+
+  // Connect to live ESP32 real-time notification stream
+  connectToEsp32Sse();
 
   // Master telemetry tick: Every 1.5s
   updateInterval = setInterval(() => {
@@ -165,6 +174,106 @@ function initApp() {
   // Set copyright year
   const yearEl = document.getElementById('year');
   if (yearEl) yearEl.textContent = new Date().getFullYear();
+}
+
+/** Request Desktop Browser Notification Permission */
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    // Show prompt on first user gesture or after 2s
+    setTimeout(() => {
+      Notification.requestPermission();
+    }, 2000);
+  }
+}
+
+/** Connect to FastAPI Live SSE Notification Stream */
+function connectToEsp32Sse() {
+  const host = window.location.hostname || '104.197.63.204';
+  const sseUrl = `http://${host}:8000/api/v1/events/stream`;
+
+  try {
+    sseConnection = new EventSource(sseUrl);
+
+    sseConnection.onopen = () => {
+      console.log('Connected to ESP32 Live Telemetry Notification Gateway');
+      logEvent('Real-time SSE notification link established with ESP32 Gateway (port 8000).', 'info');
+    };
+
+    sseConnection.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === 'esp32_data') {
+          handleIncomingEsp32Notification(payload);
+        }
+      } catch (err) {
+        console.error('Error parsing SSE event:', err);
+      }
+    };
+
+    sseConnection.onerror = () => {
+      // Reconnection handled automatically by EventSource
+    };
+  } catch (e) {
+    console.warn('SSE connection skipped:', e);
+  }
+}
+
+/** Handle Incoming Live ESP32 Telemetry Notification */
+function handleIncomingEsp32Notification(event) {
+  // 1. Play audio chime notification
+  playNotificationChime();
+
+  // 2. Show Glowing Toast Notification
+  const toastMsg = `🎙️ [ESP32 ${event.device_id}] (${event.category}): "${event.data}"`;
+  showToast(toastMsg, event.category === 'alert' ? 'danger' : 'info');
+
+  // 3. Fire Desktop System Notification
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(`ESP32 Voice Assistant [${event.device_id}]`, {
+      body: `Category: ${event.category}\nData: ${event.data}`,
+      icon: 'favicon.ico',
+    });
+  }
+
+  // 4. Record to live Event Stream Log
+  logEvent(`ESP32 INGEST [${event.device_id}] [${event.category}]: ${event.data}`, event.category === 'alert' ? 'danger' : 'info');
+
+  // 5. Update ESP32 Sensor card in UI
+  const voiceNode = sensors.find((s) => s.type === 'Voice');
+  if (voiceNode) {
+    voiceNode.currentValue = event.category.toUpperCase();
+    voiceNode.lastTranscript = event.data;
+    voiceNode.lastUpdate = new Date();
+    voiceNode.history.push(voiceNode.history.length + 1);
+    if (voiceNode.history.length > 20) voiceNode.history.shift();
+    renderSensors();
+  }
+}
+
+/** Synthesize a subtle, pleasant audio chime using Web Audio API */
+function playNotificationChime() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    // Frequency melody: C5 to G5
+    osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.12);
+
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {
+    // Audio context might be restricted before first user interaction
+  }
 }
 
 /** Bind Interactive DOM Listeners */
@@ -253,48 +362,30 @@ function toggleLiveFeed() {
 /** Telemetry Tick Engine */
 function simulateTelemetryTick() {
   sensors.forEach((s) => {
+    if (s.type === 'Voice') return; // Handled dynamically via SSE from real ESP32
+
     if (s.status === 'offline') {
-      // Small chance to recover
       if (Math.random() > 0.85) {
         s.status = 'online';
         logEvent(`Sensor [${s.name}] re-established link.`, 'info');
-        showToast(`${s.name} is back ONLINE`, 'info');
       }
       return;
     }
 
-    // Rare random offline dropout
-    if (Math.random() > 0.992) {
+    if (Math.random() > 0.995) {
       s.status = 'offline';
       logEvent(`Connection lost with [${s.name}]!`, 'danger');
-      showToast(`Sensor Dropout: ${s.name} went OFFLINE`, 'danger');
       return;
     }
 
-    if (s.type === 'Motion') {
-      // Motion binary trigger
-      s.currentValue = Math.random() > 0.88 ? 1 : 0;
-      if (s.currentValue === 1 && s.history[s.history.length - 1] === 0) {
-        logEvent(`Motion Alert: Triggered at ${s.location}`, 'warn');
-        showToast(`Motion Detected at ${s.location}!`, 'warning');
-      }
-    } else {
-      // Continuous variation
-      const range = s.maxValue - s.minValue;
-      const noise = (Math.random() - 0.49) * (range * 0.035);
-      let nextVal = s.currentValue + noise;
-      nextVal = Math.max(s.minValue, Math.min(s.maxValue, nextVal));
-      s.currentValue = Number(nextVal.toFixed(s.type === 'Pressure' || s.type === 'Temperature' ? 1 : 0));
+    // Continuous variation
+    const range = s.maxValue - s.minValue;
+    const noise = (Math.random() - 0.49) * (range * 0.035);
+    let nextVal = s.currentValue + noise;
+    nextVal = Math.max(s.minValue, Math.min(s.maxValue, nextVal));
+    s.currentValue = Number(nextVal.toFixed(s.type === 'Pressure' || s.type === 'Temperature' ? 1 : 0));
 
-      // Threshold check
-      if (s.currentValue > s.maxNormal) {
-        if (Math.random() > 0.8) {
-          logEvent(`High threshold breached on [${s.name}]: ${s.currentValue}${s.unit}`, 'warn');
-        }
-      }
-    }
-
-    // Append to history for sparklines (keep last 20)
+    // Append to history for sparklines
     s.history.push(s.currentValue);
     if (s.history.length > 20) s.history.shift();
     s.lastUpdate = new Date();
@@ -307,8 +398,8 @@ function simulateTelemetryTick() {
 /** Render Sensor Cards into Grid */
 function renderSensors() {
   const grid = document.getElementById('sensorsGrid');
+  if (!grid) return;
   
-  // Filter
   let list = sensors.filter((s) => {
     const matchesCat = currentFilter === 'all' || s.category.toLowerCase() === currentFilter.toLowerCase();
     const matchesSearch =
@@ -318,42 +409,33 @@ function renderSensors() {
     return matchesCat && matchesSearch;
   });
 
-  // Sort
   if (currentSort === 'name') {
     list.sort((a, b) => a.name.localeCompare(b.name));
   } else if (currentSort === 'value') {
-    list.sort((a, b) => b.currentValue - a.currentValue);
+    list.sort((a, b) => (typeof b.currentValue === 'number' ? b.currentValue : 0) - (typeof a.currentValue === 'number' ? a.currentValue : 0));
   } else if (currentSort === 'status') {
     list.sort((a, b) => (a.status === 'online' ? -1 : 1));
   }
 
   grid.innerHTML = '';
 
-  if (list.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 48px 0; color: var(--text-dim);">
-        <p style="font-size: 1.1rem;">No sensors found matching "<strong>${searchQuery}</strong>"</p>
-        <p style="font-size: 0.85rem; margin-top: 6px;">Try adjusting your filter or search criteria.</p>
-      </div>
-    `;
-    return;
-  }
-
   list.forEach((sensor) => {
     const card = document.createElement('div');
     card.className = 'sensor-card';
     card.style.setProperty('--sensor-accent', sensor.accentColor || 'var(--primary)');
 
-    const isAlert = sensor.currentValue > sensor.maxNormal || sensor.currentValue < sensor.minNormal;
-    const statusText = sensor.status === 'offline' ? 'Offline' : isAlert ? 'Threshold' : 'Online';
+    const isAlert = typeof sensor.currentValue === 'number' && (sensor.currentValue > sensor.maxNormal || sensor.currentValue < sensor.minNormal);
+    const statusText = sensor.status === 'offline' ? 'Offline' : isAlert ? 'Alert' : 'Online';
     const statusClass = sensor.status === 'offline' ? 'offline' : isAlert ? 'alert' : 'online';
 
-    // Progress percentage
-    const pct = Math.min(100, Math.max(0, ((sensor.currentValue - sensor.minValue) / (sensor.maxValue - sensor.minValue)) * 100));
+    const pct = typeof sensor.currentValue === 'number'
+      ? Math.min(100, Math.max(0, ((sensor.currentValue - sensor.minValue) / (sensor.maxValue - sensor.minValue)) * 100))
+      : 100;
+    
     const iconSvg = ICONS[sensor.type] || ICONS.Temperature;
-
-    const displayVal = sensor.type === 'Motion' ? (sensor.currentValue === 1 ? 'MOTION' : 'CLEAR') : sensor.currentValue;
-    const displayUnit = sensor.type === 'Motion' ? '' : sensor.unit;
+    const displayVal = sensor.type === 'Voice' ? sensor.currentValue : sensor.currentValue;
+    const displayUnit = sensor.type === 'Voice' ? '' : sensor.unit;
+    const subSubtitle = sensor.type === 'Voice' && sensor.lastTranscript ? `"${sensor.lastTranscript}"` : sensor.location;
 
     card.innerHTML = `
       <div class="sensor-card-top">
@@ -361,7 +443,7 @@ function renderSensors() {
           <div class="sensor-avatar">${iconSvg}</div>
           <div>
             <div class="sensor-name">${sensor.name}</div>
-            <div class="sensor-loc">${sensor.location}</div>
+            <div class="sensor-loc" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${subSubtitle}</div>
           </div>
         </div>
         <span class="status-tag ${statusClass}">${statusText}</span>
@@ -369,7 +451,7 @@ function renderSensors() {
 
       <div class="sensor-data-row">
         <div class="sensor-main-val">
-          <span class="sensor-num">${displayVal}</span>
+          <span class="sensor-num" style="${sensor.type === 'Voice' ? 'font-size: 1.5rem;' : ''}">${displayVal}</span>
           <span class="sensor-unit">${displayUnit}</span>
         </div>
         <div class="sparkline-box">
@@ -383,12 +465,12 @@ function renderSensors() {
 
       <div class="sensor-meta-grid">
         <div class="sensor-meta-item">
-          <span class="lbl">Range</span>
-          <span class="val">${sensor.minNormal}-${sensor.maxNormal} ${sensor.unit}</span>
-        </div>
-        <div class="sensor-meta-item">
           <span class="lbl">Category</span>
           <span class="val">${sensor.category}</span>
+        </div>
+        <div class="sensor-meta-item">
+          <span class="lbl">Type</span>
+          <span class="val">${sensor.type}</span>
         </div>
         <div class="sensor-meta-item">
           <span class="lbl">Updated</span>
@@ -398,8 +480,6 @@ function renderSensors() {
     `;
 
     grid.appendChild(card);
-
-    // Draw sparkline
     drawSparkline(`spark-${sensor.id}`, sensor.history, sensor.accentColor || '#38bdf8');
   });
 }
@@ -414,14 +494,14 @@ function drawSparkline(canvasId, points, color) {
 
   ctx.clearRect(0, 0, w, h);
 
-  const min = Math.min(...points);
-  const max = Math.max(...points);
+  const numPoints = points.map((p) => (typeof p === 'number' ? p : 1));
+  const min = Math.min(...numPoints);
+  const max = Math.max(...numPoints);
   const diff = max - min === 0 ? 1 : max - min;
 
-  // Path
   ctx.beginPath();
-  points.forEach((val, i) => {
-    const x = (i / (points.length - 1)) * (w - 6) + 3;
+  numPoints.forEach((val, i) => {
+    const x = (i / (numPoints.length - 1)) * (w - 6) + 3;
     const y = h - 6 - ((val - min) / diff) * (h - 12);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
@@ -433,7 +513,6 @@ function drawSparkline(canvasId, points, color) {
   ctx.lineJoin = 'round';
   ctx.stroke();
 
-  // Glow fill
   ctx.lineTo(w - 3, h);
   ctx.lineTo(3, h);
   ctx.closePath();
@@ -500,14 +579,15 @@ function updateDiagnostics() {
   }
 }
 
-/** Trigger Simulated Spikes for Testing */
+/** Trigger Simulated Spikes */
 function triggerSimulatedSpike() {
-  const target = sensors[Math.floor(Math.random() * sensors.length)];
+  const target = sensors[Math.floor(Math.random() * (sensors.length - 1))];
   if (!target) return;
   target.currentValue = Number((target.maxNormal * 1.35).toFixed(1));
   target.history.push(target.currentValue);
   logEvent(`ANOMALY SPIKE: ${target.name} surged to ${target.currentValue}${target.unit}!`, 'danger');
   showToast(`Warning: Spike detected on ${target.name}!`, 'danger');
+  playNotificationChime();
   renderSensors();
 }
 
@@ -520,60 +600,22 @@ function handleAddSensorSubmit(e) {
   const minNormal = Number(document.getElementById('sensorMin').value);
   const maxNormal = Number(document.getElementById('sensorMax').value);
 
-  let category = 'Climate';
-  let unit = '°C';
-  let min = 0;
-  let max = 100;
-  let accent = '#38bdf8';
-
-  if (type === 'Humidity') {
-    category = 'Climate';
-    unit = '%';
-    min = 0;
-    max = 100;
-    accent = '#38bdf8';
-  } else if (type === 'Air Quality') {
-    category = 'Environment';
-    unit = 'ppm';
-    min = 200;
-    max = 2000;
-    accent = '#10b981';
-  } else if (type === 'Power') {
-    category = 'Power';
-    unit = 'W';
-    min = 0;
-    max = 5000;
-    accent = '#fbbf24';
-  } else if (type === 'Motion') {
-    category = 'Security';
-    unit = 'State';
-    min = 0;
-    max = 1;
-    accent = '#a855f7';
-  } else if (type === 'Light') {
-    category = 'Environment';
-    unit = 'Lux';
-    min = 0;
-    max = 10000;
-    accent = '#eab308';
-  }
-
   const initialVal = Number(((minNormal + maxNormal) / 2).toFixed(1));
 
   const newSensor = {
     id: nextSensorId++,
     name,
-    category,
+    category: 'Climate',
     type,
     location,
-    unit,
-    minValue: min,
-    maxValue: max,
+    unit: type === 'Temperature' ? '°C' : type === 'Humidity' ? '%' : 'Units',
+    minValue: 0,
+    maxValue: 100,
     minNormal,
     maxNormal,
     currentValue: initialVal,
     status: 'online',
-    accentColor: accent,
+    accentColor: '#38bdf8',
     history: [initialVal, initialVal, initialVal],
     lastUpdate: new Date(),
   };
@@ -584,7 +626,7 @@ function handleAddSensorSubmit(e) {
 
   renderSensors();
   updateTopMetrics();
-  logEvent(`Registered new sensor node: [${name}] in [${location}]`, 'info');
+  logEvent(`Registered new sensor node: [${name}]`, 'info');
   showToast(`Added sensor: ${name}`, 'info');
 }
 
@@ -652,7 +694,7 @@ function showToast(message, type = 'info') {
     toast.style.transform = 'translateX(100%)';
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => toast.remove(), 300);
-  }, 3500);
+  }, 4500);
 }
 
 /** Helper: Time Ago */
