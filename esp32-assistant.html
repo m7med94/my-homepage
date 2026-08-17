@@ -598,7 +598,9 @@
           sse.onmessage = (e) => {
             try {
               const event = JSON.parse(e.data);
-              if (event.type === 'esp32_data') {
+              if (event.type === 'todo_created') {
+                fetchTodosFromApi();
+              } else if (event.type === 'esp32_data') {
                 const card = createFeedCard({
                   device_id: event.device_id,
                   category: event.category,
@@ -651,31 +653,54 @@
       }
 
       // ==========================
-      // TO-DO LIST MANAGEMENT
+      // TO-DO LIST MANAGEMENT (Synced with Backend API)
       // ==========================
       const STORAGE_KEY = 'sensorshub_device_todos';
       let currentTodoFilter = 'all';
+      let inMemoryTodos = [];
 
-      // Default sample tasks if none exist
       const defaultTodos = [
-        { id: '1', text: 'Calibrate living room DHT22 temperature sensor', priority: 'normal', completed: false, createdAt: new Date().toISOString() },
-        { id: '2', text: 'Check XiaoZhi ESP32 battery level & charging dock', priority: 'high', completed: false, createdAt: new Date().toISOString() },
+        { id: '1', text: 'Check XiaoZhi ESP32 battery level & charging dock', priority: 'high', completed: false, createdAt: new Date().toISOString() },
+        { id: '2', text: 'Calibrate living room DHT22 temperature sensor', priority: 'normal', completed: false, createdAt: new Date().toISOString() },
         { id: '3', text: 'Verify automated SQLite WAL backup schedule', priority: 'routine', completed: true, createdAt: new Date().toISOString() }
       ];
 
-      function getTodos() {
+      async function fetchTodosFromApi() {
+        try {
+          const res = await fetch('/api/v1/todos');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.todos && Array.isArray(data.todos)) {
+              inMemoryTodos = data.todos;
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+              renderTodos();
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Could not fetch todos from backend, using local cache:', e);
+        }
+
+        // Fallback to local storage
         try {
           const stored = localStorage.getItem(STORAGE_KEY);
-          if (stored) return JSON.parse(stored);
-        } catch (e) {}
-        return defaultTodos;
+          inMemoryTodos = stored ? JSON.parse(stored) : defaultTodos;
+        } catch (e) {
+          inMemoryTodos = defaultTodos;
+        }
+        renderTodos();
       }
 
-      function saveTodos(todos) {
+      function getTodos() {
+        if (inMemoryTodos && inMemoryTodos.length > 0) return inMemoryTodos;
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            inMemoryTodos = JSON.parse(stored);
+            return inMemoryTodos;
+          }
         } catch (e) {}
-        renderTodos();
+        return defaultTodos;
       }
 
       function renderTodos() {
@@ -709,7 +734,8 @@
           const item = document.createElement('div');
           item.className = `todo-item ${todo.completed ? 'completed' : ''}`;
 
-          const dateFormatted = new Date(todo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const dateVal = todo.createdAt || todo.created_at || new Date().toISOString();
+          const dateFormatted = new Date(dateVal).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
           item.innerHTML = `
             <div class="todo-left">
@@ -743,10 +769,31 @@
         });
       }
 
-      function addTodo(text, priority = 'normal') {
+      async function addTodo(text, priority = 'normal') {
         const trimmed = text.trim();
         if (!trimmed) return;
-        const todos = getTodos();
+
+        try {
+          const res = await fetch('/api/v1/todos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: trimmed, priority: priority })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.todo) {
+              inMemoryTodos.unshift(data.todo);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+              renderTodos();
+              showToast(`Task added: "${trimmed}"`);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('API post failed, saving locally:', e);
+        }
+
+        // Local fallback
         const newTodo = {
           id: 'todo_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
           text: trimmed,
@@ -754,25 +801,40 @@
           completed: false,
           createdAt: new Date().toISOString()
         };
-        todos.unshift(newTodo);
-        saveTodos(todos);
+        inMemoryTodos.unshift(newTodo);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+        renderTodos();
         showToast(`Task added: "${trimmed}"`);
       }
 
-      function toggleTodo(id) {
-        const todos = getTodos();
-        const found = todos.find(t => t.id === id);
+      async function toggleTodo(id) {
+        const found = inMemoryTodos.find(t => t.id === id);
         if (found) {
           found.completed = !found.completed;
-          saveTodos(todos);
+          renderTodos();
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+
+          try {
+            await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ completed: found.completed })
+            });
+          } catch (e) {}
         }
       }
 
-      function deleteTodo(id) {
-        let todos = getTodos();
-        todos = todos.filter(t => t.id !== id);
-        saveTodos(todos);
+      async function deleteTodo(id) {
+        inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
+        renderTodos();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
         showToast('Task removed');
+
+        try {
+          await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
+            method: 'DELETE'
+          });
+        } catch (e) {}
       }
 
       function initTodoListeners() {
@@ -807,16 +869,17 @@
 
         // Clear completed button
         document.getElementById('btnClearCompleted').addEventListener('click', () => {
-          let todos = getTodos();
-          const initialCount = todos.length;
-          todos = todos.filter(t => !t.completed);
-          if (todos.length !== initialCount) {
-            saveTodos(todos);
-            showToast('Cleared completed tasks');
-          }
+          const completedIds = inMemoryTodos.filter(t => t.completed).map(t => t.id);
+          inMemoryTodos = inMemoryTodos.filter(t => !t.completed);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+          renderTodos();
+          showToast('Cleared completed tasks');
+          completedIds.forEach(id => {
+            fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+          });
         });
 
-        renderTodos();
+        fetchTodosFromApi();
       }
 
       async function initializeFeed() {

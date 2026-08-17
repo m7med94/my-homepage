@@ -115,6 +115,32 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_category ON telemetry_logs (category);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON telemetry_logs (created_at);")
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS todos (
+                id TEXT PRIMARY KEY,
+                text TEXT NOT NULL,
+                priority TEXT DEFAULT 'normal',
+                completed INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_todo_completed ON todos (completed);")
+
+        # Seed sample todos if table is freshly created and empty
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM todos")
+        if cur.fetchone()[0] == 0:
+            sample_todos = [
+                ("1", "Check XiaoZhi ESP32 battery level & charging dock", "high", 0),
+                ("2", "Calibrate living room DHT22 temperature sensor", "normal", 0),
+                ("3", "Verify automated SQLite WAL backup schedule", "routine", 1),
+            ]
+            conn.executemany(
+                "INSERT INTO todos (id, text, priority, completed) VALUES (?, ?, ?, ?)",
+                sample_todos,
+            )
+
 init_db()
 
 # 4. Incoming Payload Validation Schemas
@@ -123,6 +149,15 @@ class DevicePayload(BaseModel):
     category: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$", description="Payload category (user_request, telemetry, alert, general)", example="user_request")
     data: str = Field(..., min_length=1, max_length=4096, description="Voice transcript, sensor readings, or JSON payload", example="Turn on air conditioning")
     timestamp: Optional[int] = Field(None, description="Optional Unix timestamp from device")
+
+class TodoCreate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=1000, description="Task description")
+    priority: Optional[str] = Field("normal", description="Priority level: high, normal, routine")
+
+class TodoUpdate(BaseModel):
+    text: Optional[str] = Field(None, min_length=1, max_length=1000)
+    priority: Optional[str] = Field(None)
+    completed: Optional[bool] = Field(None)
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt", example="What is the current temperature?")
@@ -250,7 +285,7 @@ async def ingest_device_data(
             subscribers.discard(q)
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [201 INGEST] Device:{payload.device_id} | Cat:{payload.category} | IP:{client_ip} | Latency:{duration_ms}ms")
-    print(f"       🎙️ Payload Data: {payload.data}")
+    print(f"       [Payload Data]: {payload.data}")
 
     return {
         "status": "success",
@@ -333,8 +368,143 @@ def get_device_stats(request: Request):
         "latest_transmission": dict(latest_entry) if latest_entry else None,
     }
 
-# 11. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
-@app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry Awareness")
+# 11. To-Do List Management Endpoints (ESP32 Voice & Dashboard Synced)
+@app.get("/api/v1/todos", summary="Get To-Do List & Voice Summary")
+def get_todos(
+    request: Request,
+    completed: Optional[bool] = Query(None, description="Filter by completion status"),
+):
+    require_dashboard_session(request)
+    query = "SELECT id, text, priority, completed, created_at, updated_at FROM todos WHERE 1=1"
+    params = []
+    if completed is not None:
+        query += " AND completed = ?"
+        params.append(1 if completed else 0)
+    query += " ORDER BY completed ASC, CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at DESC"
+
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+
+    todos = []
+    pending_items = []
+    for r in rows:
+        is_done = bool(r["completed"])
+        item = {
+            "id": r["id"],
+            "text": r["text"],
+            "priority": r["priority"],
+            "completed": is_done,
+            "createdAt": r["created_at"],
+            "created_at": r["created_at"],
+            "updated_at": r["updated_at"],
+        }
+        todos.append(item)
+        if not is_done:
+            p_tag = f" ({r['priority']} priority)" if r["priority"] != "normal" else ""
+            pending_items.append(f"{r['text']}{p_tag}")
+
+    # Generate a voice-friendly natural language summary for XiaoZhi ESP32 / ServerAI
+    if pending_items:
+        count = len(pending_items)
+        tasks_spoken = ", ".join([f"{idx+1}. {txt}" for idx, txt in enumerate(pending_items)])
+        voice_summary = f"You have {count} pending task{'s' if count > 1 else ''}: {tasks_spoken}."
+    else:
+        voice_summary = "Your to-do list is completely clear. You have no pending tasks."
+
+    return {
+        "status": "success",
+        "count": len(todos),
+        "pending_count": len(pending_items),
+        "summary": voice_summary,
+        "voice_summary": voice_summary,
+        "todos": todos,
+        "data": todos,
+    }
+
+@app.post("/api/v1/todos", status_code=status.HTTP_201_CREATED, summary="Create To-Do Item")
+def create_todo(payload: TodoCreate, request: Request):
+    require_dashboard_session(request)
+    todo_id = str(uuid.uuid4())
+    priority = payload.priority.lower() if payload.priority else "normal"
+    if priority not in ("high", "normal", "routine"):
+        priority = "normal"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.execute(
+            "INSERT INTO todos (id, text, priority, completed, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)",
+            (todo_id, payload.text.strip(), priority, now_iso, now_iso),
+        )
+
+    # Broadcast notification to active SSE listeners
+    notification = {
+        "type": "todo_created",
+        "id": todo_id,
+        "text": payload.text.strip(),
+        "priority": priority,
+        "timestamp": now_iso,
+    }
+    for q in list(subscribers):
+        try:
+            q.put_nowait(json.dumps(notification))
+        except Exception:
+            subscribers.discard(q)
+
+    return {
+        "status": "success",
+        "message": "Task added to to-do list",
+        "id": todo_id,
+        "todo": {
+            "id": todo_id,
+            "text": payload.text.strip(),
+            "priority": priority,
+            "completed": False,
+            "createdAt": now_iso,
+        },
+    }
+
+@app.patch("/api/v1/todos/{todo_id}", summary="Update or Toggle To-Do Item")
+def update_todo(todo_id: str, payload: TodoUpdate, request: Request):
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
+        if not cur:
+            raise HTTPException(status_code=404, detail="To-do item not found")
+
+        updates = []
+        params = []
+        if payload.text is not None:
+            updates.append("text = ?")
+            params.append(payload.text.strip())
+        if payload.priority is not None:
+            updates.append("priority = ?")
+            params.append(payload.priority.lower())
+        if payload.completed is not None:
+            updates.append("completed = ?")
+            params.append(1 if payload.completed else 0)
+
+        updates.append("updated_at = ?")
+        params.append(datetime.now(timezone.utc).isoformat())
+        params.append(todo_id)
+
+        conn.execute(f"UPDATE todos SET {', '.join(updates)} WHERE id = ?", params)
+
+    return {"status": "success", "message": "Task updated successfully"}
+
+@app.delete("/api/v1/todos/{todo_id}", summary="Delete To-Do Item")
+def delete_todo(todo_id: str, request: Request):
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="To-do item not found")
+
+    return {"status": "success", "message": "Task deleted successfully"}
+
+# 12. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
+@app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry & Task Awareness")
 async def ai_chat(req: ChatRequest, request: Request):
     global ACTIVE_GEMINI_MODEL
     require_dashboard_session(request)
@@ -343,6 +513,7 @@ async def ai_chat(req: ChatRequest, request: Request):
     api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
 
     telemetry_context = ""
+    todo_context = ""
     if req.include_telemetry:
         try:
             with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
@@ -352,12 +523,20 @@ async def ai_chat(req: ChatRequest, request: Request):
                     telemetry_context = "\n[Current Live Telemetry in Database]:\n" + "\n".join(
                         [f"- {r['device_id']} [{r['category']}]: {r['payload_data']}" for r in logs]
                     )
+
+                pending_todos = conn.execute("SELECT text, priority FROM todos WHERE completed = 0 ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END").fetchall()
+                if pending_todos:
+                    todo_context = "\n[Current User To-Do List & Pending Tasks]:\n" + "\n".join(
+                        [f"- {t['text']} (Priority: {t['priority']})" for t in pending_todos]
+                    )
+                else:
+                    todo_context = "\n[Current User To-Do List]: No pending tasks."
         except Exception:
             pass
 
     system_instruction = (
         "You are SensorsHub ServerAI for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs when relevant."
+        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs and the user's to-do list when asked."
     )
 
     if not api_key:
@@ -377,7 +556,7 @@ async def ai_chat(req: ChatRequest, request: Request):
         payload = {
             "contents": [{
                 "parts": [{
-                    "text": f"{system_instruction}\n{telemetry_context}\n\nUser Question: {req.message}"
+                    "text": f"{system_instruction}\n{telemetry_context}\n{todo_context}\n\nUser Question: {req.message}"
                 }]
             }],
             "generationConfig": {
@@ -448,7 +627,7 @@ async def ai_chat(req: ChatRequest, request: Request):
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": f"{system_instruction}\n{telemetry_context}"},
+            {"role": "system", "content": f"{system_instruction}\n{telemetry_context}\n{todo_context}"},
             {"role": "user", "content": req.message}
         ]
     }
