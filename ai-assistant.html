@@ -400,6 +400,11 @@
             })
           });
 
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Gateway returned HTTP ${res.status}: ${errText}`);
+          }
+
           const result = await res.json();
           const replyText = result.reply || 'No response from server.';
 
@@ -412,7 +417,7 @@
         } catch (err) {
           const loader = document.getElementById(loadingId);
           if (loader) {
-            loader.textContent = 'Connection Error: Could not reach the server AI gateway.';
+            loader.textContent = `Connection Error: ${err.message || 'Make sure server.py is running on the backend.'}`;
           }
         }
       });
