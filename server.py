@@ -282,7 +282,15 @@ async def ai_chat(req: ChatRequest):
     )
 
     if is_gemini:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        candidate_models = [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-pro-latest",
+            "gemini-2.5-pro",
+            "gemini-pro"
+        ]
+        
         payload = {
             "contents": [{
                 "parts": [{
@@ -290,18 +298,28 @@ async def ai_chat(req: ChatRequest):
                 }]
             }]
         }
-        try:
-            req_data = json.dumps(payload).encode("utf-8")
-            req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req_obj, timeout=15) as response:
-                res_body = json.loads(response.read().decode("utf-8"))
-                reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
-                return {"status": "success", "reply": reply}
-        except urllib.error.HTTPError as he:
-            err_text = he.read().decode("utf-8")
-            return {"status": "error", "reply": f"Gemini API Error ({he.code}): {err_text}"}
-        except Exception as e:
-            return {"status": "error", "reply": f"AI Gateway Error: {str(e)}"}
+        req_data = json.dumps(payload).encode("utf-8")
+        last_error = ""
+
+        for model_name in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            try:
+                req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req_obj, timeout=15) as response:
+                    res_body = json.loads(response.read().decode("utf-8"))
+                    if "candidates" in res_body and res_body["candidates"]:
+                        reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
+                        return {"status": "success", "reply": reply, "model": model_name}
+            except urllib.error.HTTPError as he:
+                last_error = he.read().decode("utf-8")
+                # If 404, try next candidate model
+                if he.code == 404:
+                    continue
+                return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_error}"}
+            except Exception as e:
+                return {"status": "error", "reply": f"AI Gateway Error: {str(e)}"}
+
+        return {"status": "error", "reply": f"Gemini Model Resolution Error: {last_error}"}
 
     # Default / OpenAI / Groq Compatible
     openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
