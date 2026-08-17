@@ -3,82 +3,315 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sensors Hub | Real-time Monitoring</title>
+    <title>Sensors Hub — Smart Real-Time IoT & Infrastructure Dashboard</title>
     <meta
       name="description"
-      content="Sensors Hub provides real-time monitoring and analytics for all your connected sensors and devices."
+      content="Real-time telemetry, environmental tracking, server metrics, and interactive IoT analytics dashboard."
     />
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- Background Ambient Glows -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <!-- Navigation Header -->
     <header class="topbar">
-      <div class="container nav">
-        <div class="brand" aria-label="Sensors Hub home">
-          <span class="brand-mark">S</span>
-          <span>Sensors Hub</span>
-        </div>
-        <nav class="nav-links" aria-label="Main navigation">
-          <a href="#overview">Overview</a>
-          <a href="#status">Status</a>
-          <a href="#alerts">Alerts</a>
-        </nav>
-        <div class="nav-actions">
-          <div class="status-indicator" id="systemStatus">
-            <span class="status-dot active"></span>
-            <span>Connected</span>
+      <div class="container nav-content">
+        <div class="brand">
+          <div class="brand-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              <circle cx="12" cy="12" r="9"/>
+            </svg>
           </div>
+          <div>
+            <span class="brand-title">Sensors<strong>Hub</strong></span>
+            <span class="brand-tag">v2.4 Telemetry</span>
+          </div>
+        </div>
+
+        <nav class="nav-links">
+          <a href="#overview" class="nav-link active">Overview</a>
+          <a href="#sensors" class="nav-link">Sensors</a>
+          <a href="#system" class="nav-link">Server Health</a>
+          <a href="#activity" class="nav-link">Activity Log</a>
+        </nav>
+
+        <div class="nav-actions">
+          <button class="action-btn" id="btnPauseResume" title="Pause / Resume Live Feed">
+            <span class="pulse-dot"></span>
+            <span id="feedStatusText">LIVE</span>
+          </button>
+          <button class="action-btn secondary" id="btnAddSensorBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Add Sensor</span>
+          </button>
+          <div class="clock-badge" id="timeDisplay">--:--:--</div>
         </div>
       </div>
     </header>
 
-    <main>
-      <section class="dashboard" id="overview">
-        <div class="container">
-          <div class="dashboard-header">
-            <div>
-              <h1>Sensor Monitoring Dashboard</h1>
-              <p class="subtitle">Real-time data from your connected devices</p>
+    <!-- Main Content -->
+    <main class="container main-layout">
+      <!-- Top Overview Stats -->
+      <section id="overview" class="section-overview">
+        <div class="hero-bar">
+          <div>
+            <h1 class="page-title">Real-Time Telemetry & Controls</h1>
+            <p class="page-subtitle">Continuous live streaming from active nodes, environmental probes, and server infrastructure.</p>
+          </div>
+          <div class="quick-controls">
+            <button class="pill-btn" id="btnExportData">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Export JSON
+            </button>
+            <button class="pill-btn" id="btnTriggerAlert">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              Simulate Spike
+            </button>
+          </div>
+        </div>
+
+        <div class="metrics-strip">
+          <div class="metric-card">
+            <div class="metric-icon-wrap" style="--c: var(--primary);">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             </div>
-            <div class="time-display" id="timeDisplay">--:--:--</div>
+            <div class="metric-body">
+              <span class="metric-label">Online Nodes</span>
+              <div class="metric-val-row">
+                <span class="metric-num" id="statOnlineSensors">0</span>
+                <span class="metric-sub" id="statTotalSensors">/ 0 total</span>
+              </div>
+            </div>
           </div>
 
-          <div class="stats-grid">
-            <div class="stat-card">
-              <span class="stat-label">Active Sensors</span>
-              <strong class="stat-value" id="activeSensors">0</strong>
+          <div class="metric-card">
+            <div class="metric-icon-wrap" style="--c: #ff7b72;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
             </div>
-            <div class="stat-card">
-              <span class="stat-label">Avg Temperature</span>
-              <strong class="stat-value" id="avgTemp">0°C</strong>
-            </div>
-            <div class="stat-card">
-              <span class="stat-label">System Status</span>
-              <strong class="stat-value good" id="systemHealth">Optimal</strong>
+            <div class="metric-body">
+              <span class="metric-label">Mean Temperature</span>
+              <div class="metric-val-row">
+                <span class="metric-num" id="statAvgTemp">--</span>
+                <span class="metric-unit">°C</span>
+              </div>
             </div>
           </div>
 
-          <div class="sensors-grid" id="sensorsGrid"></div>
+          <div class="metric-card">
+            <div class="metric-icon-wrap" style="--c: #38bdf8;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            </div>
+            <div class="metric-body">
+              <span class="metric-label">Avg Humidity</span>
+              <div class="metric-val-row">
+                <span class="metric-num" id="statAvgHumidity">--</span>
+                <span class="metric-unit">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon-wrap" style="--c: #34d399;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <div class="metric-body">
+              <span class="metric-label">System Health</span>
+              <div class="metric-val-row">
+                <span class="metric-num text-success" id="statSystemHealth">Optimal</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sensor Cards Section with Filter & Search -->
+      <section id="sensors" class="section-sensors">
+        <div class="filters-toolbar">
+          <div class="filter-tabs" id="categoryTabs">
+            <button class="tab-btn active" data-filter="all">All Sensors</button>
+            <button class="tab-btn" data-filter="Climate">Climate</button>
+            <button class="tab-btn" data-filter="Environment">Environment</button>
+            <button class="tab-btn" data-filter="Power">Power & System</button>
+            <button class="tab-btn" data-filter="Security">Security</button>
+          </div>
+
+          <div class="search-sort-group">
+            <div class="search-box">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="sensorSearchInput" placeholder="Search sensor or room..." />
+            </div>
+            <select id="sensorSortSelect" class="custom-select">
+              <option value="default">Sort: Default</option>
+              <option value="name">Sort: Name</option>
+              <option value="value">Sort: Highest Value</option>
+              <option value="status">Sort: Online First</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="sensors-grid" id="sensorsGrid">
+          <!-- Dynamic Sensor Cards injected by script.js -->
+        </div>
+      </section>
+
+      <!-- System Telemetry & Server Diagnostics -->
+      <section id="system" class="section-diagnostics">
+        <div class="diagnostics-grid">
+          <!-- Diagnostics Box -->
+          <div class="diag-card">
+            <div class="diag-header">
+              <div class="diag-title-row">
+                <div class="diag-icon" style="--c: #a855f7;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                </div>
+                <h3>Server & Node Diagnostics</h3>
+              </div>
+              <span class="badge-status">Host: Ubuntu / Docker</span>
+            </div>
+
+            <div class="gauge-grid">
+              <div class="gauge-item">
+                <div class="gauge-circle" id="cpuGauge" style="--val: 38;">
+                  <div class="gauge-inner">
+                    <strong id="cpuValText">38%</strong>
+                    <span>CPU</span>
+                  </div>
+                </div>
+                <div class="gauge-details">
+                  <span class="label">Host Processor</span>
+                  <span class="val" id="cpuCoresText">4 Cores @ 2.6GHz</span>
+                </div>
+              </div>
+
+              <div class="gauge-item">
+                <div class="gauge-circle" id="memGauge" style="--val: 54;">
+                  <div class="gauge-inner">
+                    <strong id="memValText">54%</strong>
+                    <span>RAM</span>
+                  </div>
+                </div>
+                <div class="gauge-details">
+                  <span class="label">Memory Usage</span>
+                  <span class="val" id="memUsageText">4.3 / 8.0 GB</span>
+                </div>
+              </div>
+
+              <div class="gauge-item">
+                <div class="gauge-circle" id="netGauge" style="--val: 22;">
+                  <div class="gauge-inner">
+                    <strong id="netValText">18ms</strong>
+                    <span>Ping</span>
+                  </div>
+                </div>
+                <div class="gauge-details">
+                  <span class="label">Network Latency</span>
+                  <span class="val" id="netStatusText">0.0% Loss</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Activity Log Stream -->
+          <div class="diag-card" id="activity">
+            <div class="diag-header">
+              <div class="diag-title-row">
+                <div class="diag-icon" style="--c: #38bdf8;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                </div>
+                <h3>Telemetry Event Log</h3>
+              </div>
+              <button class="clear-log-btn" id="btnClearLogs">Clear</button>
+            </div>
+            <div class="event-stream" id="eventStreamContainer">
+              <!-- Logs dynamic -->
+            </div>
+          </div>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <div class="container footer-row">
-        <div class="brand footer-brand">
-          <span class="brand-mark">S</span>
-          <span>Sensors Hub</span>
+    <!-- Modal: Add New Sensor -->
+    <div class="modal-backdrop" id="addSensorModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Register New Sensor Node</h3>
+          <button class="modal-close" id="btnCloseModal">&times;</button>
         </div>
-        <p>© <span id="year"></span> Sensors Hub. Real-time monitoring system.</p>
+        <form id="addSensorForm" class="modal-form">
+          <div class="form-group">
+            <label for="sensorName">Sensor Name</label>
+            <input type="text" id="sensorName" placeholder="e.g., Living Room Thermostat" required />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="sensorType">Category / Type</label>
+              <select id="sensorType" required>
+                <option value="Temperature">Temperature (°C)</option>
+                <option value="Humidity">Humidity (%)</option>
+                <option value="Pressure">Pressure (kPa)</option>
+                <option value="Air Quality">Air Quality (ppm)</option>
+                <option value="Power">Power Draw (W)</option>
+                <option value="Light">Illuminance (Lux)</option>
+                <option value="Motion">Motion Detection (Status)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sensorLocation">Location / Room</label>
+              <input type="text" id="sensorLocation" placeholder="e.g., Server Rack" required />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="sensorMin">Min Threshold</label>
+              <input type="number" id="sensorMin" value="15" step="any" required />
+            </div>
+            <div class="form-group">
+              <label for="sensorMax">Max Threshold</label>
+              <input type="number" id="sensorMax" value="30" step="any" required />
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-cancel" id="btnCancelModal">Cancel</button>
+            <button type="submit" class="btn-submit">Add Sensor</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div class="toast-stack" id="toastStack"></div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+      <div class="container footer-content">
+        <div class="brand">
+          <div class="brand-badge small">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <span>Sensors<strong>Hub</strong></span>
+        </div>
+        <p class="footer-copy">© <span id="year"></span> SensorsHub Engine. Connected to Home Assistance Core.</p>
         <div class="footer-links">
-          <a href="#overview">Dashboard</a>
-          <a href="#status">Status</a>
-          <a href="#alerts">Alerts</a>
+          <a href="#overview">Overview</a>
+          <a href="#sensors">Sensors</a>
+          <a href="#system">Diagnostics</a>
         </div>
       </div>
     </footer>
