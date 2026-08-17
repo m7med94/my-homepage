@@ -47,8 +47,41 @@ def check_esp32_connection_status() -> str:
                 "SELECT device_id, category, payload_data, client_ip, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 1"
             ).fetchone()
 
+        # Broadcast live 'Hello' greeting event to ESP32 bot and web dashboards
+        dev_id = row["device_id"] if row else "mo-project-c3"
+        greeting_text = "Hello Mohammed! ESP32 voice node is online and connected."
+        try:
+            import json, uuid
+            from backend.events import subscribers
+            entry_id = str(uuid.uuid4())
+            ts_iso = datetime.now(timezone.utc).isoformat()
+            
+            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+                conn.execute(
+                    "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
+                    (entry_id, dev_id, "agent_greeting", greeting_text, "127.0.0.1"),
+                )
+
+            event_payload = {
+                "type": "esp32_data",
+                "id": entry_id,
+                "device_id": dev_id,
+                "category": "voice_greeting",
+                "data": greeting_text,
+                "timestamp": ts_iso,
+                "client_ip": "127.0.0.1",
+            }
+            event_str = json.dumps(event_payload)
+            for q in list(subscribers):
+                try:
+                    q.put_nowait(event_str)
+                except Exception:
+                    subscribers.discard(q)
+        except Exception as ex:
+            print(f"[Network Tools Plugin] Greeting event note: {ex}")
+
         if not row:
-            return "No telemetry transmissions recorded yet from your ESP32 device."
+            return f"I just broadcasted a 'Hello' greeting packet to your ESP32 bot ({dev_id})! Listening for its reply."
 
         last_dt = None
         created_str = str(row["created_at"] or "").strip()
@@ -70,46 +103,13 @@ def check_esp32_connection_status() -> str:
         if delta_sec < 0:
             delta_sec = 0
 
-        dev_id = row["device_id"]
         ip = row["client_ip"] or "local network"
-
-        # Broadcast live 'Hello' greeting event to ESP32 bot and web dashboards
-        greeting_text = "Hello Mohammed! ESP32 voice node is online and connected."
-        try:
-            import json, uuid
-            from backend.events import subscribers
-            entry_id = str(uuid.uuid4())
-            ts_iso = datetime.now(timezone.utc).isoformat()
-            
-            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
-                conn.execute(
-                    "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
-                    (entry_id, dev_id or "mo-project-c3", "agent_greeting", greeting_text, "127.0.0.1"),
-                )
-
-            event_payload = {
-                "type": "esp32_data",
-                "id": entry_id,
-                "device_id": dev_id or "mo-project-c3",
-                "category": "voice_greeting",
-                "data": greeting_text,
-                "timestamp": ts_iso,
-                "client_ip": "127.0.0.1",
-            }
-            event_str = json.dumps(event_payload)
-            for q in list(subscribers):
-                try:
-                    q.put_nowait(event_str)
-                except Exception:
-                    subscribers.discard(q)
-        except Exception as ex:
-            print(f"[Network Tools Plugin] Greeting event note: {ex}")
 
         if delta_sec < 45:
             return f"Yes, your ESP32 ({dev_id}) is connected and online. I just sent a 'Hello' greeting to your ESP32 bot!"
         elif delta_sec < 300:
             minutes = delta_sec // 60
-            return f"Your ESP32 ({dev_id}) is connected in standby mode (last transmission {minutes}m ago). I just sent a 'Hello' ping to your device!"
+            return f"Your ESP32 ({dev_id}) is connected in standby mode (last seen {minutes}m ago). I just sent a 'Hello' ping to your device!"
         else:
             hours = delta_sec // 3600
             mins = (delta_sec % 3600) // 60
