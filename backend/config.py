@@ -16,6 +16,35 @@ os.makedirs(PLUGINS_DIR, exist_ok=True)
 # Allowed audio formats for music streaming and uploading
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
 
+# Upload security limits
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+def validate_audio_magic_bytes(header_bytes: bytes, filename: str) -> bool:
+    """
+    Validates the magic byte signatures for uploaded audio files to protect
+    against malicious executables or scripts disguised with audio file extensions.
+    """
+    if not header_bytes or len(header_bytes) < 4:
+        return False
+    ext = os.path.splitext(filename)[1].lower()
+    # MP3: ID3 header or sync word frame
+    if ext == ".mp3":
+        return header_bytes.startswith(b"ID3") or (header_bytes[0] == 0xFF and (header_bytes[1] & 0xE0) == 0xE0)
+    # WAV: RIFF container
+    if ext == ".wav":
+        return header_bytes.startswith(b"RIFF")
+    # OGG / OPUS: OggS container
+    if ext in {".ogg", ".opus"}:
+        return header_bytes.startswith(b"OggS")
+    # FLAC: fLaC magic header
+    if ext == ".flac":
+        return header_bytes.startswith(b"fLaC")
+    # M4A / AAC: ftyp MP4 container or ADTS sync frames
+    if ext in {".m4a", ".aac"}:
+        return b"ftyp" in header_bytes[:16] or (header_bytes[0] == 0xFF and (header_bytes[1] & 0xF6) == 0xF0) or header_bytes.startswith(b"ID3")
+    return True
+
 # Automatic local .env loader
 def load_env():
     env_path = os.path.join(BASE_DIR, ".env")

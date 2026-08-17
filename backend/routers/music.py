@@ -16,6 +16,9 @@ from backend.config import (
     DB_PATH,
     MUSIC_DIR,
     ALLOWED_AUDIO_EXTENSIONS,
+    MAX_UPLOAD_MB,
+    MAX_UPLOAD_BYTES,
+    validate_audio_magic_bytes,
     require_dashboard_session,
 )
 from backend.events import subscribers
@@ -28,19 +31,33 @@ class PlaylistCreate(BaseModel):
     description: Optional[str] = Field("", max_length=500)
 
 class PlaylistAddTrack(BaseModel):
-    filename: str = Field(..., min_length=1, max_length=255)
+    filename: str = Field(..., description="Track filename to add")
+
+def get_available_music_tracks():
+    """Scans MUSIC_DIR and returns list of valid audio files."""
+    tracks = []
+    if os.path.exists(MUSIC_DIR):
+        for fname in sorted(os.listdir(MUSIC_DIR)):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in ALLOWED_AUDIO_EXTENSIONS and not fname.startswith("."):
+                fpath = os.path.join(MUSIC_DIR, fname)
+                try:
+                    fstat = os.stat(fpath)
+                    tracks.append({
+                        "filename": fname,
+                        "title": os.path.splitext(fname)[0],
+                        "extension": ext.replace(".", "").upper(),
+                        "size_bytes": fstat.st_size,
+                        "size_mb": round(fstat.st_size / (1024 * 1024), 2),
+                        "url": f"/music/{urllib.parse.quote(fname)}",
+                    })
+                except Exception:
+                    pass
+    return tracks
 
 def voice_music_action(query: str = "", action: str = "play") -> Dict[str, Any]:
-    """Helper used both by HTTP endpoint and by Universal Agent Hub."""
-    available_tracks = []
-    if os.path.exists(MUSIC_DIR):
-        for f in sorted(os.listdir(MUSIC_DIR)):
-            if os.path.splitext(f)[1].lower() in ALLOWED_AUDIO_EXTENSIONS:
-                available_tracks.append({
-                    "filename": f,
-                    "title": os.path.splitext(f)[0],
-                    "url": f"/music/{urllib.parse.quote(f)}"
-                })
+    """Resolves natural language queries against the local music vault and playlists."""
+    available_tracks = get_available_music_tracks()
 
     if not available_tracks:
         return {
@@ -119,30 +136,10 @@ def voice_music_action(query: str = "", action: str = "play") -> Dict[str, Any]:
 def list_music_files(request: Request):
     """Lists all audio tracks available on the server."""
     require_dashboard_session(request)
-    tracks = []
-    if os.path.exists(MUSIC_DIR):
-        for fname in sorted(os.listdir(MUSIC_DIR)):
-            ext = os.path.splitext(fname)[1].lower()
-            if ext in ALLOWED_AUDIO_EXTENSIONS:
-                fpath = os.path.join(MUSIC_DIR, fname)
-                try:
-                    fstat = os.stat(fpath)
-                    tracks.append({
-                        "filename": fname,
-                        "title": os.path.splitext(fname)[0],
-                        "extension": ext.replace(".", "").upper(),
-                        "size_bytes": fstat.st_size,
-                        "size_mb": round(fstat.st_size / (1024 * 1024), 2),
-                        "url": f"/music/{urllib.parse.quote(fname)}",
-                        "created_at": datetime.fromtimestamp(fstat.st_mtime, timezone.utc).isoformat(),
-                    })
-                except Exception:
-                    pass
-
     return {
         "status": "success",
-        "count": len(tracks),
-        "tracks": tracks,
+        "count": len(get_available_music_tracks()),
+        "tracks": get_available_music_tracks(),
     }
 
 @router.post("/api/v1/music/upload", status_code=status.HTTP_201_CREATED, summary="Upload Music File (Single Part)")
@@ -150,27 +147,76 @@ async def upload_music_file(
     request: Request,
     file: UploadFile = File(...),
 ):
-    """Uploads a single music file and converts it to ESP32 Opus."""
+    """Uploads a single music file and converts it to ESP32 Opus with strict size limits & signature validation."""
     require_dashboard_session(request)
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No file selected")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file selected")
         
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_AUDIO_EXTENSIONS:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file format '{ext}'. Allowed audio types: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}"
         )
+
+    # 1. Enforce Content-Length header limit upfront if present
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"File exceeds maximum upload limit of {MAX_UPLOAD_MB}MB"
+                )
+        except ValueError:
+            pass
 
     safe_filename = "".join(c for c in file.filename if c.isalnum() or c in "._- ").strip()
     if not safe_filename:
         safe_filename = f"track_{uuid.uuid4().hex[:8]}{ext}"
 
     dest_path = os.path.join(MUSIC_DIR, safe_filename)
+    total_bytes_read = 0
+    chunk_size = 64 * 1024  # 64KB stream chunks
+    header_checked = False
+
     try:
         with open(dest_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+
+                # 2. Validate magic bytes signature on the first chunk
+                if not header_checked:
+                    header_checked = True
+                    if not validate_audio_magic_bytes(chunk[:32], file.filename):
+                        buffer.close()
+                        if os.path.exists(dest_path):
+                            os.remove(dest_path)
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Invalid audio file signature for '{ext}'. Upload rejected."
+                        )
+
+                # 3. Guard size while streaming
+                total_bytes_read += len(chunk)
+                if total_bytes_read > MAX_UPLOAD_BYTES:
+                    buffer.close()
+                    if os.path.exists(dest_path):
+                        os.remove(dest_path)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File exceeded maximum allowed size of {MAX_UPLOAD_MB}MB during streaming."
+                    )
+
+                buffer.write(chunk)
+    except HTTPException:
+        raise
     except Exception as e:
+        if os.path.exists(dest_path):
+            try: os.remove(dest_path)
+            except Exception: pass
         raise HTTPException(status_code=500, detail=f"Failed to write file to disk: {str(e)}")
     finally:
         await file.close()
@@ -215,11 +261,11 @@ async def upload_music_chunk(
     total_chunks: int = Form(...),
     filename: str = Form(...),
 ):
-    """Chunked uploader to support large files through HTTP proxy buffers."""
+    """Chunked uploader to support large files with streaming size enforcement & signature validation."""
     require_dashboard_session(request)
     ext = os.path.splitext(filename)[1].lower()
     if ext not in ALLOWED_AUDIO_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported format '{ext}'")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported format '{ext}'")
 
     clean_id = "".join(c for c in upload_id if c.isalnum() or c in "-_")[:64]
     safe_filename = "".join(c for c in filename if c.isalnum() or c in "._- ").strip()
@@ -228,14 +274,37 @@ async def upload_music_chunk(
 
     temp_path = os.path.join(MUSIC_DIR, f".tmp_{clean_id}_{safe_filename}")
     
+    # Read chunk data
+    chunk_data = await file.read()
+    await file.close()
+
+    # 1. Validate signature on the first chunk
+    if chunk_index == 0 and not validate_audio_magic_bytes(chunk_data[:32], filename):
+        if os.path.exists(temp_path):
+            try: os.remove(temp_path)
+            except Exception: pass
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid audio file signature for '{ext}'. Chunked upload rejected."
+        )
+
+    # 2. Check cumulative chunk size
+    existing_size = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
+    if existing_size + len(chunk_data) > MAX_UPLOAD_BYTES:
+        if os.path.exists(temp_path):
+            try: os.remove(temp_path)
+            except Exception: pass
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Cumulative file size exceeds maximum limit of {MAX_UPLOAD_MB}MB"
+        )
+
     try:
         mode = "wb" if chunk_index == 0 else "ab"
         with open(temp_path, mode) as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(chunk_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write chunk {chunk_index}: {str(e)}")
-    finally:
-        await file.close()
 
     if chunk_index + 1 >= total_chunks:
         dest_path = os.path.join(MUSIC_DIR, safe_filename)
@@ -266,8 +335,7 @@ async def upload_music_chunk(
 
         return {
             "status": "success",
-            "completed": True,
-            "message": f"Track '{safe_filename}' uploaded successfully ({file_size_mb} MB)",
+            "message": f"Track '{safe_filename}' uploaded and assembled successfully",
             "track": {
                 "filename": safe_filename,
                 "title": os.path.splitext(safe_filename)[0],
@@ -278,12 +346,7 @@ async def upload_music_chunk(
             }
         }
 
-    return {
-        "status": "success",
-        "completed": False,
-        "chunk_index": chunk_index,
-        "total_chunks": total_chunks,
-    }
+    return {"status": "chunk_received", "chunk_index": chunk_index}
 
 @router.delete("/api/v1/music/{filename}", summary="Delete Music File")
 def delete_music_file(filename: str, request: Request):
