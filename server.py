@@ -262,8 +262,8 @@ async def ai_chat(req: ChatRequest):
 
     system_instruction = (
         "You are SensorsHub AI Copilot for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer concisely, smartly, and informatively in English. If asked about sensor readings or ESP32 voice transmissions, "
-        "refer to the live telemetry logs provided below."
+        "Answer directly, naturally, and concisely in English. "
+        "IMPORTANT: Output ONLY your final conversational response. Do NOT include any internal thoughts, bullet points of persona analysis, or drafts."
     )
 
     if not api_key:
@@ -272,6 +272,18 @@ async def ai_chat(req: ChatRequest):
             "reply": "⚠️ **Server AI Key Not Configured Yet.**\n\nPlease add your API key into `/home/m7med_am/my-homepage/.env` as `GEMINI_API_KEY=\"...\"`, then restart `server.py`.\n\nHere is your local database status:\n" + (telemetry_context or "No telemetry records yet."),
             "telemetry_included": bool(telemetry_context)
         }
+
+    def clean_reply(text: str) -> str:
+        text = text.strip()
+        if "* User Role:" in text or "* Persona:" in text or "* Thoughts:" in text:
+            # Extract final intended message
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+            for l in reversed(lines):
+                if l.startswith('"') and l.endswith('"'):
+                    return l.strip('"')
+                if not l.startswith("*") and not l.startswith("Option "):
+                    return l
+        return text
 
     # If Gemini API Key (starts with AIza, AQ., or GEMINI_API_KEY set)
     is_gemini = (
@@ -313,7 +325,11 @@ async def ai_chat(req: ChatRequest):
                 "parts": [{
                     "text": f"{system_instruction}\n{telemetry_context}\n\nUser Question: {req.message}"
                 }]
-            }]
+            }],
+            "generationConfig": {
+                "temperature": 0.6,
+                "maxOutputTokens": 800
+            }
         }
         req_data = json.dumps(payload).encode("utf-8")
         last_error = ""
@@ -322,11 +338,11 @@ async def ai_chat(req: ChatRequest):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
                 req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(req_obj, timeout=15) as response:
+                with urllib.request.urlopen(req_obj, timeout=30) as response:
                     res_body = json.loads(response.read().decode("utf-8"))
                     if "candidates" in res_body and res_body["candidates"]:
-                        reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
-                        return {"status": "success", "reply": reply, "model": model_name}
+                        raw_reply = res_body["candidates"][0]["content"]["parts"][0]["text"]
+                        return {"status": "success", "reply": clean_reply(raw_reply), "model": model_name}
             except urllib.error.HTTPError as he:
                 last_error = he.read().decode("utf-8")
                 if he.code in (400, 404):
