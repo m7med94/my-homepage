@@ -40,9 +40,7 @@ def create_dashboard_session(response: Response, authorization: Optional[str] = 
 @router.get("/health", summary="Health Check")
 def health_check():
     """System health check and live status metrics."""
-    api_key_configured = bool(
-        os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
-    )
+    api_key_configured = bool(os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY"))
     return {
         "status": "healthy",
         "service": "ESP32 Voice Telemetry Gateway",

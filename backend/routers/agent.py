@@ -87,12 +87,12 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[tupl
 
 @router.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry, Task & Music Awareness")
 async def ai_chat(req: ChatRequest, request: Request):
-    """High-speed server-side AI chat with Gemini/Groq/OpenAI."""
+    """High-speed server-side AI chat powered exclusively by Google Gemini."""
     global ACTIVE_GEMINI_MODEL
     require_dashboard_session(request)
     client_ip = request.client.host if request.client else "unknown"
     enforce_rate_limit(f"ai:{client_ip}", limit=20)
-    api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY")
 
     telemetry_context = ""
     todo_context = ""
@@ -130,112 +130,74 @@ async def ai_chat(req: ChatRequest, request: Request):
     if not api_key:
         return {
             "status": "warning",
-            "reply": "⚠️ Server AI Key not configured in environment. Please add GEMINI_API_KEY to your server configuration.",
+            "reply": "⚠️ Gemini API Key not configured in environment. Please add GEMINI_API_KEY to your server configuration.",
         }
-
-    is_gemini = (
-        api_key.startswith("AIza")
-        or api_key.startswith("AQ.")
-        or os.getenv("GEMINI_API_KEY") is not None
-        or (os.getenv("AI_API_KEY") and len(api_key) in (39, 52, 53))
-    )
-
-    if is_gemini:
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": f"{system_instruction}\n{telemetry_context}\n{todo_context}\n{music_context}\n\nUser Question: {req.message}"
-                }]
-            }],
-            "generationConfig": {
-                "temperature": 0.5,
-                "maxOutputTokens": 400
-            }
-        }
-        req_data = json.dumps(payload).encode("utf-8")
-
-        def run_gemini(model_name: str):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req_obj, timeout=15) as response:
-                res_body = json.loads(response.read().decode("utf-8"))
-                if "candidates" in res_body and res_body["candidates"]:
-                    cand = res_body["candidates"][0]
-                    if "content" in cand and "parts" in cand["content"]:
-                        real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p and not p.get("thought", False)]
-                        if not real_parts:
-                            real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p]
-                        full_text = "".join(real_parts).strip()
-                        if full_text:
-                            return full_text
-                if "error" in res_body:
-                    raise Exception(res_body["error"].get("message", "Unknown error"))
-            return None
-
-        if ACTIVE_GEMINI_MODEL:
-            try:
-                ans = await asyncio.to_thread(run_gemini, ACTIVE_GEMINI_MODEL)
-                if ans:
-                    return {"status": "success", "reply": ans, "model": ACTIVE_GEMINI_MODEL}
-            except Exception:
-                ACTIVE_GEMINI_MODEL = None
-
-        candidate_models = [
-            "gemini-2.5-flash-lite",
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash",
-            "gemini-flash-latest",
-            "gemini-2.5-pro",
-        ]
-
-        last_err = ""
-        for m in candidate_models:
-            try:
-                ans = await asyncio.to_thread(run_gemini, m)
-                if ans:
-                    ACTIVE_GEMINI_MODEL = m
-                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [AI SUCCESS] Model: {m} | Question: {req.message[:30]}")
-                    return {"status": "success", "reply": ans, "model": m}
-            except urllib.error.HTTPError as he:
-                last_err = he.read().decode("utf-8")
-                if he.code in (400, 404):
-                    continue
-                return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_err}"}
-            except Exception as e:
-                last_err = str(e)
-                continue
-
-        return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
-
-    # OpenAI / Groq Compatible Fallback (executed asynchronously in thread pool)
-    openai_url = "https://api.groq.com/openai/v1/chat/completions" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "https://api.openai.com/v1/chat/completions"
-    model = "llama-3.1-8b-instant" if (os.getenv("GROQ_API_KEY") or api_key.startswith("gsk_")) else "gpt-4o-mini"
 
     payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": f"{system_instruction}\n{telemetry_context}\n{todo_context}"},
-            {"role": "user", "content": req.message}
-        ]
+        "contents": [{
+            "parts": [{
+                "text": f"{system_instruction}\n{telemetry_context}\n{todo_context}\n{music_context}\n\nUser Question: {req.message}"
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 400
+        }
     }
+    req_data = json.dumps(payload).encode("utf-8")
 
-    def run_openai_fallback():
-        req_data = json.dumps(payload).encode("utf-8")
-        req_obj = urllib.request.Request(
-            openai_url,
-            data=req_data,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-            method="POST"
-        )
+    def run_gemini(model_name: str):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req_obj, timeout=15) as response:
             res_body = json.loads(response.read().decode("utf-8"))
-            return res_body["choices"][0]["message"]["content"]
+            if "candidates" in res_body and res_body["candidates"]:
+                cand = res_body["candidates"][0]
+                if "content" in cand and "parts" in cand["content"]:
+                    real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p and not p.get("thought", False)]
+                    if not real_parts:
+                        real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p]
+                    full_text = "".join(real_parts).strip()
+                    if full_text:
+                        return full_text
+            if "error" in res_body:
+                raise Exception(res_body["error"].get("message", "Unknown error"))
+        return None
 
-    try:
-        reply = await asyncio.to_thread(run_openai_fallback)
-        return {"status": "success", "reply": reply.strip()}
-    except Exception as e:
-        return {"status": "error", "reply": f"AI Service Error: {str(e)}"}
+    if ACTIVE_GEMINI_MODEL:
+        try:
+            ans = await asyncio.to_thread(run_gemini, ACTIVE_GEMINI_MODEL)
+            if ans:
+                return {"status": "success", "reply": ans, "model": ACTIVE_GEMINI_MODEL}
+        except Exception:
+            ACTIVE_GEMINI_MODEL = None
+
+    candidate_models = [
+        "gemini-2.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-pro",
+    ]
+
+    last_err = ""
+    for m in candidate_models:
+        try:
+            ans = await asyncio.to_thread(run_gemini, m)
+            if ans:
+                ACTIVE_GEMINI_MODEL = m
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [AI SUCCESS] Model: {m} | Question: {req.message[:30]}")
+                return {"status": "success", "reply": ans, "model": m}
+        except urllib.error.HTTPError as he:
+            last_err = he.read().decode("utf-8")
+            if he.code in (400, 404):
+                continue
+            return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_err}"}
+        except Exception as e:
+            last_err = str(e)
+            continue
+
+    return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
 
 @router.post("/api/v1/agent/dispatch", summary="Universal Server-Side Agent Dispatcher")
 async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request):

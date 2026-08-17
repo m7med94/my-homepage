@@ -99,8 +99,8 @@ def validate_production_secrets():
         missing.append("DEVICE_API_TOKEN")
     if not os.getenv("DASHBOARD_API_TOKEN"):
         missing.append("DASHBOARD_API_TOKEN")
-    if not (os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")):
-        missing.append("AI_API_KEY / GEMINI_API_KEY")
+    if not (os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY")):
+        missing.append("GEMINI_API_KEY")
 
     if missing:
         msg = f"[Security Warning] Missing environment secrets: {', '.join(missing)}."
