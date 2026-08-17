@@ -377,10 +377,11 @@
         recognition = new SpeechRec();
         recognition.continuous = false;
         recognition.interimResults = false;
+        recognition.lang = 'en-US'; // Explicitly listen for English speech
 
         recognition.onstart = () => {
           btnMic.classList.add('recording');
-          userInput.placeholder = 'Listening... Speak now';
+          userInput.placeholder = 'Listening in English... Speak now';
         };
 
         recognition.onresult = (e) => {
@@ -408,16 +409,38 @@
         btnMic.style.display = 'none';
       }
 
-      // Voice TTS (Speech Synthesis)
+      // Voice TTS (Speech Synthesis - Enforced English US Voice)
       function speakText(text) {
         if (!document.getElementById('chkAutoSpeak').checked) return;
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
-          const cleanText = text.replace(/[*_#`]/g, '');
+          const cleanText = text.replace(/[*_#`~>]/g, '').trim();
+          if (!cleanText) return;
+
           const utterance = new SpeechSynthesisUtterance(cleanText);
-          utterance.rate = 1.05;
+          utterance.lang = 'en-US';
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+
+          // Pick the best natural English voice from the browser's voice list
+          const voices = window.speechSynthesis.getVoices();
+          const bestEnglishVoice = voices.find(v => (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Jenny') || v.name.includes('Zira') || v.name.includes('Guy')) && (v.lang === 'en-US' || v.lang === 'en-GB'))
+            || voices.find(v => v.lang === 'en-US')
+            || voices.find(v => v.lang.startsWith('en'));
+
+          if (bestEnglishVoice) {
+            utterance.voice = bestEnglishVoice;
+          }
+
           window.speechSynthesis.speak(utterance);
         }
+      }
+
+      // Preload voices
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
       }
 
       // Form Submit / Call Server-Side AI Endpoint
