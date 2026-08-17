@@ -1,4 +1,4 @@
-/* SensorsHub - Premium IoT & Telemetry CSS Design System */
+/* SensorsHub — Ultra-Clean Modern IoT Dashboard CSS */
 
 :root {
   --bg: #070c14;
@@ -22,7 +22,7 @@
   --danger: #ef4444;
   --danger-glow: rgba(239, 68, 68, 0.25);
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
   
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
@@ -34,7 +34,7 @@
   --radius-full: 9999px;
 }
 
-/* Reset & Base Setup */
+/* Reset & Global */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -91,7 +91,7 @@ body {
   left: 20%;
 }
 
-/* Container */
+/* Layout Container */
 .container {
   width: 100%;
   max-width: 1280px;
@@ -109,7 +109,6 @@ body {
   background: rgba(7, 12, 20, 0.75);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
-  transition: border-color 0.3s ease;
 }
 
 .nav-content {
@@ -250,15 +249,9 @@ body {
 }
 
 @keyframes pulse-ring {
-  0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-  }
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
 .clock-badge {
@@ -281,7 +274,7 @@ body {
   gap: 48px;
 }
 
-/* Hero & Page Header */
+/* Hero Section */
 .hero-bar {
   display: flex;
   align-items: flex-end;
@@ -333,7 +326,7 @@ body {
   background: var(--panel-hover);
 }
 
-/* Top Metrics Cards Strip */
+/* Top Metric Cards */
 .metrics-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -409,7 +402,7 @@ body {
   color: var(--success) !important;
 }
 
-/* Sensor Filter & Search Bar */
+/* Filter & Search Bar */
 .filters-toolbar {
   display: flex;
   align-items: center;
@@ -1112,7 +1105,7 @@ body {
   color: var(--primary);
 }
 
-/* Responsive Media Queries */
+/* Responsive */
 @media (max-width: 960px) {
   .diagnostics-grid {
     grid-template-columns: 1fr;
