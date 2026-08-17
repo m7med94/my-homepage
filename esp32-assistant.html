@@ -632,7 +632,7 @@
           sse.onmessage = (e) => {
             try {
               const event = JSON.parse(e.data);
-              if (event.type === 'todo_created') {
+              if (event.type === 'todo_created' || event.type === 'todo_deleted' || event.type === 'todo_updated') {
                 fetchTodosFromApi();
               } else if (event.type === 'esp32_data') {
                 const card = createFeedCard({
@@ -701,7 +701,7 @@
                 }
               }, 200);
             }
-            showToast('🗑️ Record deleted');
+            showToast('🗑️ Record deleted from database');
           } else {
             showToast('❌ Failed to delete record');
           }
@@ -732,9 +732,12 @@
 
       function escapeHtml(str) {
         if (str === null || str === undefined) return '';
-        return String(str).replace(/[&<>"']/g, function(m) {
-          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-        });
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
       }
 
       // ==========================
@@ -743,12 +746,6 @@
       const STORAGE_KEY = 'sensorshub_device_todos';
       let currentTodoFilter = 'all';
       let inMemoryTodos = [];
-
-      const defaultTodos = [
-        { id: '1', text: 'Check XiaoZhi ESP32 battery level & charging dock', priority: 'high', completed: false, createdAt: new Date().toISOString() },
-        { id: '2', text: 'Calibrate living room DHT22 temperature sensor', priority: 'normal', completed: false, createdAt: new Date().toISOString() },
-        { id: '3', text: 'Verify automated SQLite WAL backup schedule', priority: 'routine', completed: true, createdAt: new Date().toISOString() }
-      ];
 
       async function fetchTodosFromApi() {
         try {
@@ -769,15 +766,15 @@
         // Fallback to local storage
         try {
           const stored = localStorage.getItem(STORAGE_KEY);
-          inMemoryTodos = stored ? JSON.parse(stored) : defaultTodos;
+          inMemoryTodos = stored ? JSON.parse(stored) : [];
         } catch (e) {
-          inMemoryTodos = defaultTodos;
+          inMemoryTodos = [];
         }
         renderTodos();
       }
 
       function getTodos() {
-        if (inMemoryTodos && inMemoryTodos.length > 0) return inMemoryTodos;
+        if (inMemoryTodos && inMemoryTodos.length >= 0) return inMemoryTodos;
         try {
           const stored = localStorage.getItem(STORAGE_KEY);
           if (stored) {
@@ -785,7 +782,7 @@
             return inMemoryTodos;
           }
         } catch (e) {}
-        return defaultTodos;
+        return [];
       }
 
       function renderTodos() {
@@ -834,7 +831,7 @@
             </div>
             <div class="todo-right">
               <span class="todo-priority ${escapeHtml(todo.priority)}">${escapeHtml(todo.priority)}</span>
-              <button type="button" class="todo-del-btn" data-id="${escapeHtml(todo.id)}" title="Delete task">
+              <button type="button" class="todo-del-btn" data-id="${escapeHtml(todo.id)}" title="Delete task from database">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"></polyline>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -895,31 +892,44 @@
       async function toggleTodo(id) {
         const found = inMemoryTodos.find(t => t.id === id);
         if (found) {
-          found.completed = !found.completed;
+          const newCompleted = !found.completed;
+          found.completed = newCompleted;
           renderTodos();
           localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
 
           try {
-            await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
+            const res = await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ completed: found.completed })
+              body: JSON.stringify({ completed: newCompleted })
             });
-          } catch (e) {}
+            if (!res.ok) {
+              fetchTodosFromApi();
+            }
+          } catch (e) {
+            fetchTodosFromApi();
+          }
         }
       }
 
       async function deleteTodo(id) {
-        inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
-        renderTodos();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
-        showToast('Task removed');
-
         try {
-          await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
+          const res = await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
             method: 'DELETE'
           });
-        } catch (e) {}
+          if (res.ok) {
+            inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+            renderTodos();
+            showToast('🗑️ Task deleted from database');
+          } else {
+            showToast('❌ Failed to delete task from server');
+            fetchTodosFromApi();
+          }
+        } catch (e) {
+          showToast('❌ Network error while deleting task');
+          fetchTodosFromApi();
+        }
       }
 
       function initTodoListeners() {
@@ -953,15 +963,22 @@
         });
 
         // Clear completed button
-        document.getElementById('btnClearCompleted').addEventListener('click', () => {
-          const completedIds = inMemoryTodos.filter(t => t.completed).map(t => t.id);
-          inMemoryTodos = inMemoryTodos.filter(t => !t.completed);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
-          renderTodos();
-          showToast('Cleared completed tasks');
-          completedIds.forEach(id => {
-            fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
-          });
+        document.getElementById('btnClearCompleted').addEventListener('click', async () => {
+          try {
+            const res = await fetch('/api/v1/todos?completed=true', { method: 'DELETE' });
+            if (res.ok) {
+              const data = await res.json();
+              inMemoryTodos = inMemoryTodos.filter(t => !t.completed);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+              renderTodos();
+              showToast(`🗑️ ${data.message || 'Cleared completed tasks'}`);
+            } else {
+              showToast('❌ Failed to clear completed tasks');
+              fetchTodosFromApi();
+            }
+          } catch (e) {
+            showToast('❌ Network error');
+          }
         });
 
         fetchTodosFromApi();

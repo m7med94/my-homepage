@@ -609,7 +609,55 @@ def update_todo(todo_id: str, payload: TodoUpdate, request: Request):
 
         conn.execute(f"UPDATE todos SET {', '.join(updates)} WHERE id = ?", params)
 
+    # Broadcast notification to active SSE listeners
+    now_iso = datetime.now(timezone.utc).isoformat()
+    notification = {
+        "type": "todo_updated",
+        "id": todo_id,
+        "timestamp": now_iso,
+    }
+    for q in list(subscribers):
+        try:
+            q.put_nowait(json.dumps(notification))
+        except Exception:
+            subscribers.discard(q)
+
     return {"status": "success", "message": "Task updated successfully"}
+
+@app.delete("/api/v1/todos", summary="Delete Multiple or Completed To-Do Items")
+def clear_multiple_todos(
+    request: Request,
+    completed: Optional[bool] = Query(None, description="If true, deletes only completed tasks"),
+):
+    require_dashboard_session(request)
+    query = "DELETE FROM todos WHERE 1=1"
+    params = []
+    if completed is not None:
+        query += " AND completed = ?"
+        params.append(1 if completed else 0)
+
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+        res = conn.execute(query, params)
+        deleted_count = res.rowcount
+
+    # Broadcast notification to active SSE listeners
+    now_iso = datetime.now(timezone.utc).isoformat()
+    notification = {
+        "type": "todo_deleted",
+        "deleted_count": deleted_count,
+        "timestamp": now_iso,
+    }
+    for q in list(subscribers):
+        try:
+            q.put_nowait(json.dumps(notification))
+        except Exception:
+            subscribers.discard(q)
+
+    return {
+        "status": "success",
+        "message": f"Successfully deleted {deleted_count} task(s)",
+        "deleted_count": deleted_count,
+    }
 
 @app.delete("/api/v1/todos/{todo_id}", summary="Delete To-Do Item")
 def delete_todo(todo_id: str, request: Request):
@@ -619,7 +667,20 @@ def delete_todo(todo_id: str, request: Request):
         if res.rowcount == 0:
             raise HTTPException(status_code=404, detail="To-do item not found")
 
-    return {"status": "success", "message": "Task deleted successfully"}
+    # Broadcast notification to active SSE listeners
+    now_iso = datetime.now(timezone.utc).isoformat()
+    notification = {
+        "type": "todo_deleted",
+        "id": todo_id,
+        "timestamp": now_iso,
+    }
+    for q in list(subscribers):
+        try:
+            q.put_nowait(json.dumps(notification))
+        except Exception:
+            subscribers.discard(q)
+
+    return {"status": "success", "message": "Task deleted successfully", "id": todo_id}
 
 # 12. Music & Audio File Management Endpoints (ESP32 & Web Streaming)
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".opus"}
