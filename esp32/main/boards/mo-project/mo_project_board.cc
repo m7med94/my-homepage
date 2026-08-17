@@ -292,6 +292,16 @@ private:
                 bool success = SendDataToServer(data, category);
                 return success ? "Data successfully sent to server." : "Failed to connect to backend server.";
             });
+
+        // Tool 10: Check server & ESP32 connection status
+        mcp.AddTool(
+            "self.server.check_connection",
+            "Check if the ESP32 is connected to the server, verify server health, or say hello. "
+            "Use this whenever the user asks 'is the esp32 connected', 'are you connected', 'check connection', 'is my server healthy', or asks to check connection.",
+            PropertyList(),
+            [this](const PropertyList&) -> ReturnValue {
+                return DispatchInstructionToServer("is the ESP32 connected?", "esp32");
+            });
     }
 
     std::string DispatchInstructionToServer(const std::string& instruction, const std::string& context = "general") {

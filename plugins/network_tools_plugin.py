@@ -186,10 +186,14 @@ def handle_intent(instruction: str, context: str = "") -> Optional[str]:
         "is the device connected",
         "is device online",
         "check esp32 connection",
+        "check connection",
         "esp32 connection status",
+        "esp32 status",
+        "are you connected",
+        "are you online",
         "is the voice assistant connected",
         "is the voice assistant online",
-    ]):
+    ]) or context in ["esp32", "network_esp32"]:
         return check_esp32_connection_status()
 
     # 3. Disk Space Queries
