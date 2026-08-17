@@ -514,6 +514,19 @@ private:
 
         cJSON* root = cJSON_Parse(response_body.c_str());
         if (root) {
+            // Check if there is an audio stream URL to play through the speaker
+            cJSON* action_item = cJSON_GetObjectItem(root, "action");
+            if (action_item && cJSON_IsString(action_item)) {
+                std::string act = action_item->valuestring;
+                if (act == "play" || act == "play_playlist") {
+                    cJSON* esp_url = cJSON_GetObjectItem(root, "esp32_url");
+                    if (!esp_url) esp_url = cJSON_GetObjectItem(root, "url");
+                    if (esp_url && cJSON_IsString(esp_url) && esp_url->valuestring != nullptr) {
+                        PlayMusicTrackInBackground(esp_url->valuestring);
+                    }
+                }
+            }
+
             cJSON* voice_summary = cJSON_GetObjectItem(root, "voice_summary");
             if (cJSON_IsString(voice_summary) && voice_summary->valuestring != nullptr) {
                 std::string summary_text = voice_summary->valuestring;
@@ -539,6 +552,48 @@ private:
         }
 
         return response_body;
+    }
+
+    void PlayMusicTrackInBackground(const std::string& audio_url) {
+        std::string full_url = audio_url;
+        if (full_url.rfind("http", 0) != 0) {
+            full_url = "http://136.64.148.228" + full_url;
+        }
+
+        // Spawn detached task to download OGG Opus audio and pipe to speaker
+        std::thread([this, full_url]() {
+            // Wait for TTS spoken response to finish
+            vTaskDelay(pdMS_TO_TICKS(1800));
+
+            auto network = GetNetwork();
+            if (!network) return;
+
+            auto http = network->CreateHttp(3);
+            if (!http) return;
+
+            http->SetTimeout(20000);
+            ESP_LOGI(TAG, "Fetching OGG Opus audio stream from: %s", full_url.c_str());
+            if (!http->Open("GET", full_url)) {
+                ESP_LOGE(TAG, "Failed to open audio connection to %s", full_url.c_str());
+                return;
+            }
+
+            int status_code = http->GetStatusCode();
+            if (status_code >= 200 && status_code < 300) {
+                std::string ogg_payload = http->ReadAll();
+                http->Close();
+
+                if (!ogg_payload.empty()) {
+                    ESP_LOGI(TAG, "Downloaded %d bytes of OGG Opus music. Streaming to speaker...", (int)ogg_payload.size());
+                    Application::GetInstance().PlaySound(ogg_payload);
+                } else {
+                    ESP_LOGW(TAG, "Downloaded audio payload was empty.");
+                }
+            } else {
+                ESP_LOGE(TAG, "Audio stream HTTP error: %d", status_code);
+                http->Close();
+            }
+        }).detach();
     }
 
 public:

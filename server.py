@@ -5,6 +5,7 @@ import os
 import secrets
 import shutil
 import sqlite3
+import subprocess
 import time
 import urllib.request
 import urllib.error
@@ -21,6 +22,38 @@ from pydantic import BaseModel, Field
 # Ensure music storage directory exists
 MUSIC_DIR = os.path.join(os.path.dirname(__file__), "music")
 os.makedirs(MUSIC_DIR, exist_ok=True)
+
+def convert_to_esp32_opus(input_path: str) -> Optional[str]:
+    """
+    Converts any uploaded audio track (MP3, WAV, M4A, etc.) to a high-efficiency
+    16kHz mono OGG Opus stream specifically optimized for XiaoZhi ESP32 hardware playback.
+    """
+    try:
+        base_name = os.path.splitext(input_path)[0]
+        opus_path = f"{base_name}.ogg"
+        
+        # If already .ogg, check if valid
+        if input_path.lower().endswith(".ogg") and os.path.exists(opus_path):
+            return opus_path
+
+        # Run ffmpeg to convert to 16kHz mono OGG Opus (32k bitrate)
+        cmd = [
+            "ffmpeg", "-y", "-i", input_path,
+            "-ac", "1",
+            "-ar", "16000",
+            "-c:a", "libopus",
+            "-b:a", "32k",
+            opus_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=40)
+        if res.returncode == 0 and os.path.exists(opus_path):
+            print(f"[Audio Converter] Converted '{os.path.basename(input_path)}' to ESP32 OGG Opus stream.")
+            return opus_path
+        else:
+            print(f"[Audio Converter] ffmpeg not available or exited with {res.returncode}")
+    except Exception as e:
+        print(f"[Audio Converter] Auto-conversion note: {e}")
+    return None
 
 # Automatic local .env loader
 def load_env():
@@ -614,6 +647,9 @@ async def upload_music_file(
     file_size_mb = round(file_size_bytes / (1024 * 1024), 2)
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    # Automatically generate 16kHz mono OGG Opus for ESP32 hardware streaming
+    convert_to_esp32_opus(dest_path)
+
     # Broadcast notification to active SSE listeners
     notification = {
         "type": "music_uploaded",
@@ -685,6 +721,9 @@ async def upload_music_chunk(
         file_size_bytes = os.path.getsize(dest_path)
         file_size_mb = round(file_size_bytes / (1024 * 1024), 2)
         now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Automatically generate 16kHz mono OGG Opus for ESP32 hardware streaming
+        convert_to_esp32_opus(dest_path)
 
         # Broadcast SSE notification
         notification = {
@@ -880,19 +919,30 @@ def resolve_voice_music(
         }
 
     # If asking for random or no specific query
-    if not q or "random" in q or "anything" in q or "shuffle" in q or q == "music":
-        selected = available_tracks[secrets.randbelow(len(available_tracks))]
-        summary = f"Playing {selected['title']}."
+    def get_track_payload(t, act="play", prefix=""):
+        base = os.path.splitext(t["filename"])[0]
+        ogg_candidate = f"{base}.ogg"
+        if os.path.exists(os.path.join(MUSIC_DIR, ogg_candidate)):
+            esp32_url = f"/music/{urllib.parse.quote(ogg_candidate)}"
+        else:
+            esp32_url = t["url"]
+        
+        msg = f"{prefix}Playing {t['title']}." if prefix else f"Playing {t['title']}."
         return {
             "status": "success",
             "found": True,
-            "action": "play",
-            "summary": summary,
-            "voice_summary": summary,
-            "track": selected,
-            "url": selected["url"],
-            "filename": selected["filename"]
+            "action": act,
+            "summary": msg,
+            "voice_summary": msg,
+            "track": t,
+            "url": t["url"],
+            "esp32_url": esp32_url,
+            "filename": t["filename"]
         }
+
+    if not q or "random" in q or "anything" in q or "shuffle" in q or q == "music":
+        selected = available_tracks[secrets.randbelow(len(available_tracks))]
+        return get_track_payload(selected, "play")
 
     # Match playlist name first
     with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
@@ -903,17 +953,8 @@ def resolve_voice_music(
             valid_p_tracks = [t["track_filename"] for t in t_rows if os.path.exists(os.path.join(MUSIC_DIR, t["track_filename"]))]
             if valid_p_tracks:
                 first_song = valid_p_tracks[0]
-                summary = f"Playing {p_match['name']} playlist starting with {os.path.splitext(first_song)[0]}."
-                return {
-                    "status": "success",
-                    "found": True,
-                    "action": "play_playlist",
-                    "playlist": p_match["name"],
-                    "summary": summary,
-                    "voice_summary": summary,
-                    "track": {"filename": first_song, "title": os.path.splitext(first_song)[0], "url": f"/music/{urllib.parse.quote(first_song)}"},
-                    "url": f"/music/{urllib.parse.quote(first_song)}"
-                }
+                target_t = {"filename": first_song, "title": os.path.splitext(first_song)[0], "url": f"/music/{urllib.parse.quote(first_song)}"}
+                return get_track_payload(target_t, "play_playlist", f"Playing {p_match['name']} playlist starting with ")
 
     # Fuzzy match track titles
     matched = None
@@ -923,22 +964,10 @@ def resolve_voice_music(
             break
 
     if not matched:
-        # Fallback to closest track
         matched = available_tracks[0]
-        summary = f"Could not find an exact match for {query}. Playing {matched['title']}."
-    else:
-        summary = f"Playing {matched['title']}."
+        return get_track_payload(matched, "play", f"Could not find an exact match for {query}. ")
 
-    return {
-        "status": "success",
-        "found": True,
-        "action": "play",
-        "summary": summary,
-        "voice_summary": summary,
-        "track": matched,
-        "url": matched["url"],
-        "filename": matched["filename"]
-    }
+    return get_track_payload(matched, "play")
 
 # 15. POST ServerAI Chat Endpoint (Server-Side High-Speed Inference)
 @app.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry, Task & Music Awareness")
