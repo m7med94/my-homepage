@@ -78,10 +78,15 @@ def check_esp32_connection_status() -> str:
                 except Exception:
                     subscribers.discard(q)
 
-            # 3. Queue directly for ESP32 hardware device long-poll listener
+            # 3. Push immediately over persistent hardware WebSocket if connected
             try:
-                from backend.routers.agent import queue_message_for_esp32
-                queue_message_for_esp32(greeting_text, dev_id)
+                import asyncio
+                from backend.routers.telemetry import push_message_to_device
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(push_message_to_device(dev_id, greeting_text, "happy"))
+                except RuntimeError:
+                    asyncio.run(push_message_to_device(dev_id, greeting_text, "happy"))
             except Exception as e:
                 pass
         except Exception as ex:

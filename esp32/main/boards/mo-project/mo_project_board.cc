@@ -9,6 +9,7 @@
 #include "press_to_talk_mcp_tool.h"
 #include "system_reset.h"
 #include "wifi_board.h"
+#include <wifi_manager.h>
 
 #include <driver/gpio.h>
 #include <driver/i2c_master.h>
@@ -595,65 +596,6 @@ private:
         }).detach();
     }
 
-    void StartServerNotificationWorker() {
-        std::thread([this]() {
-            // Initial delay to allow WiFi and network stack to fully connect
-            vTaskDelay(pdMS_TO_TICKS(6000));
-            ESP_LOGI(TAG, "Starting Server Outbound Message & Greeting Worker...");
-
-            while (true) {
-                vTaskDelay(pdMS_TO_TICKS(3500));
-                auto network = GetNetwork();
-                if (!network) continue;
-
-                auto http = network->CreateHttp(3);
-                if (!http) continue;
-
-                std::string poll_url = "http://136.64.148.228/api/v1/agent/messages/pending?device_id=mo-project-c3";
-                http->SetTimeout(3500);
-                if (http->Open("GET", poll_url)) {
-                    int status_code = http->GetStatusCode();
-                    if (status_code == 200) {
-                        std::string body = http->ReadAll();
-                        http->Close();
-
-                        if (!body.empty()) {
-                            cJSON* root = cJSON_Parse(body.c_str());
-                            if (root) {
-                                cJSON* has_msg = cJSON_GetObjectItem(root, "has_message");
-                                if (has_msg && cJSON_IsTrue(has_msg)) {
-                                    cJSON* msg_item = cJSON_GetObjectItem(root, "message");
-                                    cJSON* audio_item = cJSON_GetObjectItem(root, "audio_url");
-                                    if (msg_item && cJSON_IsString(msg_item) && msg_item->valuestring != nullptr) {
-                                        std::string msg_text = msg_item->valuestring;
-                                        ESP_LOGI(TAG, "Received server agent outbound message: %s", msg_text.c_str());
-
-                                        // Display message on OLED screen
-                                        if (display_) {
-                                            display_->SetEmotion("happy");
-                                            display_->SetChatMessage("assistant", msg_text.c_str());
-                                        }
-
-                                        // Alert on device screen and trigger active speaker notice
-                                        Application::GetInstance().Alert("Server Agent", msg_text.c_str(), "happy");
-
-                                        // If an audio stream URL is provided, stream to speaker
-                                        if (audio_item && cJSON_IsString(audio_item) && audio_item->valuestring != nullptr) {
-                                            PlayMusicTrackInBackground(audio_item->valuestring);
-                                        }
-                                    }
-                                }
-                                cJSON_Delete(root);
-                            }
-                        }
-                    } else {
-                        http->Close();
-                    }
-                }
-            }
-        }).detach();
-    }
-
 public:
     MoProjectBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeCodecI2c();
@@ -661,7 +603,6 @@ public:
         InitializeButtons();
         InitializePowerSaveTimer();
         InitializeTools();
-        StartServerNotificationWorker();
 
 #ifdef DEFAULT_WIFI_SSID
         // Auto-configure default Wi-Fi credentials

@@ -6,9 +6,8 @@ import sqlite3
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
-
-from fastapi import APIRouter, Header, HTTPException, Request, Query, status
+from typing import Optional, Dict
+from fastapi import APIRouter, Header, HTTPException, Request, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -21,6 +20,34 @@ from backend.config import (
 from backend.events import subscribers
 
 router = APIRouter(tags=["Telemetry & Events"])
+
+# Active WebSocket connections from ESP32 hardware clients (device_id -> WebSocket)
+connected_device_sockets: Dict[str, WebSocket] = {}
+
+async def push_message_to_device(device_id: str, text: str, emotion: str = "happy", audio_url: Optional[str] = None) -> bool:
+    """Instantly pushes a JSON command/speech packet to the connected ESP32 WebSocket client."""
+    ws = connected_device_sockets.get(device_id)
+    if not ws:
+        # Fallback to any connected ESP32 if device_id is generic
+        if connected_device_sockets:
+            ws = next(iter(connected_device_sockets.values()))
+    
+    if ws:
+        try:
+            payload = {
+                "action": "speak",
+                "text": text,
+                "emotion": emotion,
+                "audio_url": audio_url,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            await ws.send_text(json.dumps(payload))
+            print(f"[Device WebSocket] Pushed message to {device_id}: {text}")
+            return True
+        except Exception as e:
+            print(f"[Device WebSocket] Error pushing to {device_id}: {e}")
+            connected_device_sockets.pop(device_id, None)
+    return False
 
 class DevicePayload(BaseModel):
     device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address")
@@ -235,3 +262,51 @@ def get_device_stats(request: Request):
         "categories": categories,
         "latest_transmission": dict(latest_entry) if latest_entry else None,
     }
+
+@router.websocket("/api/v1/device/ws")
+async def device_websocket_endpoint(websocket: WebSocket, device_id: str = "mo-project-c3"):
+    """
+    Persistent full-duplex WebSocket channel for ESP32 hardware clients.
+    Enables server-to-device instant push for alerts, spoken text, and commands.
+    """
+    await websocket.accept()
+    connected_device_sockets[device_id] = websocket
+    print(f"[Device WebSocket] ESP32 '{device_id}' connected to persistent push channel.")
+
+    # Record active state in SQLite
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.execute(
+                "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), device_id, "websocket_connect", "ESP32 WebSocket Client Connected", websocket.client.host if websocket.client else "unknown"),
+            )
+    except Exception:
+        pass
+
+    try:
+        # Send initial confirmation frame
+        welcome_frame = {
+            "type": "welcome",
+            "device_id": device_id,
+            "status": "connected",
+            "server_time": datetime.now(timezone.utc).isoformat()
+        }
+        await websocket.send_text(json.dumps(welcome_frame))
+
+        while True:
+            # Keep socket alive and receive any uplink heartbeats / messages from ESP32
+            data = await websocket.receive_text()
+            if data:
+                try:
+                    payload = json.loads(data)
+                    if payload.get("type") == "ping":
+                        await websocket.send_text(json.dumps({"type": "pong", "timestamp": datetime.now(timezone.utc).isoformat()}))
+                except Exception:
+                    pass
+    except WebSocketDisconnect:
+        print(f"[Device WebSocket] ESP32 '{device_id}' disconnected gracefully.")
+    except Exception as e:
+        print(f"[Device WebSocket] ESP32 '{device_id}' socket closed: {e}")
+    finally:
+        if connected_device_sockets.get(device_id) == websocket:
+            connected_device_sockets.pop(device_id, None)
