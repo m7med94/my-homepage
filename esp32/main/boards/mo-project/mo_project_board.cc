@@ -596,6 +596,84 @@ private:
         }).detach();
     }
 
+    void StartServerBroadcastListener() {
+        xTaskCreate([](void* arg) {
+            auto* board = static_cast<MoProjectBoard*>(arg);
+            ESP_LOGI(TAG, "Broadcast Listener Task created. Waiting for device IDLE state...");
+
+            // Wait until device is fully activated and reaches Idle state
+            while (true) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                auto state = Application::GetInstance().GetDeviceState();
+                if (state == kDeviceStateIdle) {
+                    break;
+                }
+            }
+
+            // Extra grace period (5 seconds after idle)
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            ESP_LOGI(TAG, "Device is IDLE. Starting background server broadcast listener...");
+
+            while (true) {
+                vTaskDelay(pdMS_TO_TICKS(3500));
+
+                auto state = Application::GetInstance().GetDeviceState();
+                // Never poll if user is actively talking or listening
+                if (state != kDeviceStateIdle) {
+                    continue;
+                }
+
+                auto network = board->GetNetwork();
+                if (!network) continue;
+
+                auto http = network->CreateHttp(3);
+                if (!http) continue;
+
+                std::string poll_url = "http://136.64.148.228/api/v1/agent/messages/pending?device_id=mo-project-c3";
+                http->SetTimeout(2500);
+
+                if (http->Open("GET", poll_url)) {
+                    int status_code = http->GetStatusCode();
+                    if (status_code == 200) {
+                        std::string body = http->ReadAll();
+                        http->Close();
+
+                        if (!body.empty()) {
+                            cJSON* root = cJSON_Parse(body.c_str());
+                            if (root) {
+                                cJSON* has_msg = cJSON_GetObjectItem(root, "has_message");
+                                if (has_msg && cJSON_IsTrue(has_msg)) {
+                                    cJSON* msg_item = cJSON_GetObjectItem(root, "message");
+                                    cJSON* audio_item = cJSON_GetObjectItem(root, "audio_url");
+                                    if (msg_item && cJSON_IsString(msg_item) && msg_item->valuestring != nullptr) {
+                                        std::string msg_text = msg_item->valuestring;
+                                        ESP_LOGI(TAG, "Received server broadcast: %s", msg_text.c_str());
+
+                                        // Wake display up if asleep
+                                        board->GetDisplay()->SetPowerSaveMode(false);
+                                        board->GetDisplay()->SetEmotion("happy");
+                                        board->GetDisplay()->SetChatMessage("assistant", msg_text.c_str());
+
+                                        // Alert on device screen and trigger speaker chime
+                                        Application::GetInstance().Alert("Server Agent", msg_text.c_str(), "happy");
+
+                                        // If an audio stream URL is provided, stream to speaker
+                                        if (audio_item && cJSON_IsString(audio_item) && audio_item->valuestring != nullptr) {
+                                            board->PlayMusicTrackInBackground(audio_item->valuestring);
+                                        }
+                                    }
+                                }
+                                cJSON_Delete(root);
+                            }
+                        }
+                    } else {
+                        http->Close();
+                    }
+                }
+            }
+        }, "srv_push_task", 4096, this, 1, NULL);
+    }
+
 public:
     MoProjectBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeCodecI2c();
@@ -603,6 +681,7 @@ public:
         InitializeButtons();
         InitializePowerSaveTimer();
         InitializeTools();
+        StartServerBroadcastListener();
 
 #ifdef DEFAULT_WIFI_SSID
         // Auto-configure default Wi-Fi credentials
