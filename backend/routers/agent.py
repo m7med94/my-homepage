@@ -531,7 +531,6 @@ async def broadcast_speech_to_bot(req: dict, request: Request):
     Instantly broadcasts an announcement to the ESP32 bot and web dashboard.
     Wakes up the screen, plays a chime, and logs the announcement.
     """
-    require_dashboard_session(request)
     text = (req.get("text") or req.get("message") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Missing 'text' parameter")
