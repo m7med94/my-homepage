@@ -1,7 +1,7 @@
 # Developer & AI Agent Guide: Adding Voice Tools & Capabilities
 
 > **CRITICAL ARCHITECTURAL RULE FOR FUTURE AGENTS:**
-> **DO NOT modify or re-flash the ESP32 C++ firmware to add new tasks, voice commands, or tools.**
+> **DO NOT modify or re-flash the ESP32 C++ firmware to add new tasks, voice commands, or tools.until the user is asked for**
 > The ESP32 is designed as a **Thin Hardware Client** that relays all voice requests to the Python server at `POST /api/v1/agent/dispatch`.
 
 ---

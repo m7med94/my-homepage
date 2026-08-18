@@ -1,5 +1,5 @@
-# server.py — Modular ESP32 AI Voice Assistant & SensorsHub Gateway
-import os
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -21,11 +21,30 @@ init_db()
 # 2. Validate environment configuration and production secrets
 validate_production_secrets()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Automatically start XiaoZhi Cloud MCP WebSocket Bridge in background
+    mcp_task = None
+    try:
+        from backend.mcp_bridge import run_xiaozhi_mcp_bridge, DEFAULT_MCP_URL
+        mcp_url = os.getenv("XIAOZHI_MCP_URL", DEFAULT_MCP_URL)
+        if mcp_url:
+            print(f"[XiaoZhi MCP] Launching background Cloud MCP WebSocket Bridge...")
+            mcp_task = asyncio.create_task(run_xiaozhi_mcp_bridge(mcp_url))
+    except Exception as e:
+        print(f"[XiaoZhi MCP] Startup note: {e}")
+
+    yield
+
+    if mcp_task:
+        mcp_task.cancel()
+
 # 2. Initialize FastAPI Application
 app = FastAPI(
     title="SensorsHub Core & ESP32 AI Voice Assistant Gateway",
     description="Modular telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, Music Streaming, Local Network Tools, and Server-Side AI Copilot.",
-    version="2.3.0",
+    version="2.4.0",
+    lifespan=lifespan,
 )
 
 # 3. Mount /music directory for direct browser and ESP32 audio streaming

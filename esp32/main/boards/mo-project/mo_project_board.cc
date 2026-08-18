@@ -596,45 +596,6 @@ private:
         }).detach();
     }
 
-    void RegisterMqttMetadataOnce() {
-        std::thread([this]() {
-            // Wait until device is fully activated and in Idle state
-            while (true) {
-                vTaskDelay(pdMS_TO_TICKS(1500));
-                if (Application::GetInstance().GetDeviceState() == kDeviceStateIdle) {
-                    break;
-                }
-            }
-
-            // Grace period after reaching idle
-            vTaskDelay(pdMS_TO_TICKS(3000));
-
-            Settings settings("mqtt", false);
-            std::string endpoint = settings.GetString("endpoint");
-            std::string client_id = settings.GetString("client_id");
-            std::string username = settings.GetString("username");
-            std::string password = settings.GetString("password");
-            std::string pub_topic = settings.GetString("publish_topic");
-
-            if (!endpoint.empty()) {
-                cJSON* meta = cJSON_CreateObject();
-                cJSON_AddStringToObject(meta, "endpoint", endpoint.c_str());
-                cJSON_AddStringToObject(meta, "client_id", client_id.c_str());
-                cJSON_AddStringToObject(meta, "username", username.c_str());
-                cJSON_AddStringToObject(meta, "password", password.c_str());
-                cJSON_AddStringToObject(meta, "publish_topic", pub_topic.c_str());
-                char* meta_str = cJSON_PrintUnformatted(meta);
-                cJSON_Delete(meta);
-
-                if (meta_str) {
-                    ESP_LOGI(TAG, "Syncing MQTT cloud metadata to Server Hub for direct push alerts...");
-                    SendDataToServer(std::string(meta_str), "mqtt_registration");
-                    free(meta_str);
-                }
-            }
-        }).detach();
-    }
-
 public:
     MoProjectBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeCodecI2c();
@@ -642,7 +603,6 @@ public:
         InitializeButtons();
         InitializePowerSaveTimer();
         InitializeTools();
-        RegisterMqttMetadataOnce();
 
 #ifdef DEFAULT_WIFI_SSID
         // Auto-configure default Wi-Fi credentials
