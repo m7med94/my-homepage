@@ -89,6 +89,36 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
             }
         },
         {
+            "name": "get_weather",
+            "description": "Get live real-time weather, temperature, humidity, wind, and forecast for any city in the world (e.g. Cairo, Munich, London, Tokyo).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string", "description": "The city name to check weather for"}
+                },
+                "required": ["city"]
+            }
+        },
+        {
+            "name": "search_wikipedia",
+            "description": "Look up factual summaries and encyclopedia articles from Wikipedia on any person, science concept, historical event, or topic.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "The search topic or entity"}
+                },
+                "required": ["topic"]
+            }
+        },
+        {
+            "name": "get_smart_tip",
+            "description": "Get an intelligent developer, coding, or productivity tip of the day.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
             "name": "dispatch_server_ai",
             "description": "Dispatch a complex question, custom plugin calculation, or general query to the server's Gemini AI and plugin registry.",
             "inputSchema": {
@@ -178,6 +208,38 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
                 return f"Found {len(matched)} matching track(s): " + ", ".join(matched[:5])
             return f"No tracks found matching '{query}'. Available songs: " + ", ".join(files[:5])
         return f"Server vault contains {len(files)} track(s): " + ", ".join(files[:6])
+
+    elif name == "get_weather":
+        city = arguments.get("city", "Cairo").strip()
+        try:
+            from plugins.weather_plugin import get_city_coordinates, fetch_weather_report
+            coords = get_city_coordinates(city)
+            if coords:
+                lat, lon, resolved_city, country = coords
+                report = fetch_weather_report(lat, lon, resolved_city, country)
+                if report:
+                    return report
+            return f"Sorry, could not find weather details for {city}."
+        except Exception as e:
+            return f"Weather lookup error: {e}"
+
+    elif name == "search_wikipedia":
+        topic = arguments.get("topic", "").strip()
+        if not topic:
+            return "Please provide a topic to search on Wikipedia."
+        try:
+            from plugins.wikipedia_plugin import handle_intent as wiki_intent
+            res = wiki_intent(f"who is {topic}") or wiki_intent(f"what is {topic}") or wiki_intent(topic)
+            return res or f"No Wikipedia summary found for {topic}."
+        except Exception as e:
+            return f"Wikipedia search error: {e}"
+
+    elif name == "get_smart_tip":
+        try:
+            from plugins.smart_tips_plugin import handle_intent as tip_intent
+            return tip_intent("smart tip") or "Always keep your Python packages up to date and write clean docstrings!"
+        except Exception as e:
+            return "Error retrieving smart tip."
 
     elif name == "dispatch_server_ai":
         instruction = arguments.get("instruction", "")

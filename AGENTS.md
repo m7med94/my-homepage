@@ -1,8 +1,9 @@
 # Developer & AI Agent Guide: Adding Voice Tools & Capabilities
 
 > **CRITICAL ARCHITECTURAL RULE FOR FUTURE AGENTS:**
-> **DO NOT modify or re-flash the ESP32 C++ firmware to add new tasks, voice commands, or tools.until the user is asked for**
-> The ESP32 is designed as a **Thin Hardware Client** that relays all voice requests to the Python server at `POST /api/v1/agent/dispatch`.
+> **DO NOT modify or re-flash the ESP32 C++ firmware to add new tasks, voice commands, or tools.**
+> The ESP32 is a **Thin Audio Client** running the standard XiaoZhi firmware.
+> All voice tools and capabilities are connected to XiaoZhi Cloud via the **Python Cloud MCP Bridge** in `backend/mcp_bridge.py`.
 
 ---
 
@@ -10,38 +11,42 @@
 
 You have two simple ways to add new voice capabilities to the assistant:
 
-### Option A: Modular Python Plugin in `plugins/` (Recommended)
-1. Create a new file in the `plugins/` folder (e.g. `plugins/weather.py`, `plugins/spotify.py`, `plugins/home_assistant.py`).
-2. Implement the `handle_intent` function:
+### Option A: Add a Cloud MCP Tool in `backend/mcp_bridge.py` (Recommended & Primary)
+1. Open `backend/mcp_bridge.py`.
+2. Add your tool definition to `get_mcp_tools_list()`:
    ```python
-   from typing import Optional
-
-   def handle_intent(instruction: str, context: str = "") -> Optional[str]:
-       text = instruction.lower().strip()
-       
-       # Check if the voice prompt matches your tool's keywords
-       if "weather in" in text:
-           city = text.split("weather in")[-1].strip()
-           # Call weather API or perform custom logic here
-           return f"The weather in {city} is sunny and 24 degrees celsius."
-           
-       return None  # Return None if not handled, so other plugins or Gemini can process it
+   {
+       "name": "my_new_tool",
+       "description": "Clear description of what the tool does and when the LLM should invoke it.",
+       "inputSchema": {
+           "type": "object",
+           "properties": {
+               "param": {"type": "string", "description": "Parameter explanation"}
+           },
+           "required": ["param"]
+       }
+   }
    ```
-3. Restart `server.py`. The plugin is **automatically discovered and executed**.
+3. Add the execution handler in `execute_mcp_tool()`:
+   ```python
+   elif name == "my_new_tool":
+       param = arguments.get("param")
+       # Execute your custom Python logic, database query, or API call
+       return f"Successfully executed tool with {param}."
+   ```
+4. Restart `server.py`. XiaoZhi Cloud will **instantly register the new tool over the active MCP WebSocket**!
 
 ---
 
-### Option B: Add Directly to `server.py`
-Inside `dispatch_agent_instruction()` in `server.py`, add a new intent condition:
-```python
-if "turn on the light" in lower_inst:
-    # Trigger Home Assistant or IoT webhook
-    return {"status": "success", "action": "iot_light_on", "reply": "Turning on the lights now."}
-```
+### Option B: Drop-in Plugin in `plugins/`
+1. Create a new file in `plugins/` (e.g. `plugins/spotify.py`, `plugins/home_assistant.py`).
+2. Implement `handle_intent(instruction: str, context: str = "") -> Optional[str]`.
+3. The plugin is automatically loaded by the `dispatch_server_ai` tool.
 
 ---
 
 ## 📂 Architecture Overview
 - **ESP32 Microcontroller (`esp32/`)**: Owns only physical hardware (Microphone, ES8311 Audio Codec, OLED Display, Volume, Hardware Sleep).
-- **Backend Hub (`server.py`)**: Owns all databases (SQLite), business logic, To-Dos, music vault, AI model inference (Gemini / Groq / OpenAI), and the plugin registry.
-- **Plugins (`plugins/`)**: Drop-in Python scripts for custom user capabilities and agent tools.
+- **XiaoZhi Cloud Gateway (`wss://api.xiaozhi.me/mcp/`)**: Real-time voice LLM, STT, and Neural TTS pipeline.
+- **Backend Hub (`server.py` & `backend/mcp_bridge.py`)**: Owns all tools, databases (SQLite), To-Dos, music vault, AI model inference, and the Cloud MCP WebSocket connection.
+- **Plugins (`plugins/`)**: Drop-in Python scripts for custom capabilities.
