@@ -617,14 +617,22 @@ async def broadcast_speech_to_bot(req: dict, request: Request):
     # 3. Push to XiaoZhi MQTT Cloud Broker directly to device topic
     mqtt_sent = push_mqtt_alert_to_cloud(dev_id, text, emotion)
 
-    # 4. Push over hardware WebSocket channel if connected
+    # 4. Push via XiaoZhi Cloud MCP WebSocket Bridge
+    mcp_pushed = False
+    try:
+        from backend.mcp_bridge import push_cloud_broadcast
+        mcp_pushed = await push_cloud_broadcast(text)
+    except Exception as e:
+        print(f"[MCP Push Error]: {e}")
+
+    # 5. Push over hardware WebSocket channel if connected
     try:
         from backend.routers.telemetry import push_message_to_device
         await push_message_to_device(dev_id, text, emotion)
     except Exception:
         pass
 
-    # 5. Queue for hardware listener
+    # 6. Queue for hardware listener
     queue_message_for_esp32(text, dev_id)
 
     return {

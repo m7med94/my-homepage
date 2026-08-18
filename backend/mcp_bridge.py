@@ -255,6 +255,37 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
 
     return f"Tool '{name}' is not recognized."
 
+# Global reference to active XiaoZhi Cloud WebSocket
+active_mcp_ws = None
+
+async def push_cloud_notification(method: str, params: Optional[Dict[str, Any]] = None) -> bool:
+    """Sends a server-initiated JSON-RPC 2.0 notification to XiaoZhi Cloud."""
+    global active_mcp_ws
+    if not active_mcp_ws:
+        logger.warning("Cannot push notification: XiaoZhi Cloud MCP WebSocket is not connected.")
+        return False
+    try:
+        msg = {
+            "jsonrpc": "2.0",
+            "method": method
+        }
+        if params is not None:
+            msg["params"] = params
+        await active_mcp_ws.send(json.dumps(msg))
+        logger.info(f"Pushed server notification '{method}' to XiaoZhi Cloud.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to push notification to XiaoZhi Cloud: {e}")
+        return False
+
+async def notify_tools_changed() -> bool:
+    """Notifies XiaoZhi Cloud that tools have been dynamically added or updated."""
+    return await push_cloud_notification("notifications/tools/list_changed")
+
+async def push_cloud_broadcast(text: str) -> bool:
+    """Pushes a server text notification directly into XiaoZhi Cloud."""
+    return await push_cloud_notification("notifications/message", {"text": text, "timestamp": time.time()})
+
 # =========================================================================================
 # WEBSOCKET MCP CLIENT RUNNER
 # =========================================================================================
@@ -264,6 +295,7 @@ async def run_xiaozhi_mcp_bridge(mcp_ws_url: str = DEFAULT_MCP_URL):
     Maintains a persistent, auto-reconnecting JSON-RPC 2.0 WebSocket client connection
     to XiaoZhi Cloud MCP Endpoint.
     """
+    global active_mcp_ws
     import websockets
 
     logger.info(f"Connecting to XiaoZhi Cloud MCP Endpoint at: {mcp_ws_url[:50]}...")
@@ -276,6 +308,7 @@ async def run_xiaozhi_mcp_bridge(mcp_ws_url: str = DEFAULT_MCP_URL):
                 ping_timeout=20,
                 max_size=10 * 1024 * 1024
             ) as ws:
+                active_mcp_ws = ws
                 logger.info("Successfully CONNECTED to XiaoZhi Cloud MCP Bridge! Status: ONLINE (Green)")
 
                 async for message in ws:
