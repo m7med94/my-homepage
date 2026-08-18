@@ -525,6 +525,53 @@ def send_message_to_esp32(req: dict, request: Request):
     queue_message_for_esp32(text, dev_id, audio_url)
     return {"status": "success", "message": "Message queued for ESP32 bot"}
 
+def push_mqtt_alert_to_cloud(device_id: str, text: str, emotion: str = "happy") -> bool:
+    """Connects to XiaoZhi MQTT cloud broker and publishes an alert frame to the device topic."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM device_mqtt_credentials WHERE device_id = ?", (device_id,)).fetchone()
+            if not row:
+                row = conn.execute("SELECT * FROM device_mqtt_credentials ORDER BY updated_at DESC LIMIT 1").fetchone()
+            if not row:
+                return False
+
+        try:
+            import paho.mqtt.client as mqtt
+            import ssl
+        except ImportError:
+            print("[MQTT Push] paho-mqtt not installed in python environment.")
+            return False
+
+        endpoint = row["endpoint"] or "mqtt.xiaozhi.me:8883"
+        host = endpoint.split(":")[0]
+        port = int(endpoint.split(":")[1]) if ":" in endpoint else 8883
+        topic = row["publish_topic"]
+
+        payload = {
+            "type": "alert",
+            "status": "Server Notice",
+            "message": text,
+            "emotion": emotion
+        }
+
+        client = mqtt.Client(client_id=f"server_push_{uuid.uuid4().hex[:8]}")
+        if row["username"] and row["password"]:
+            client.username_pw_set(row["username"], row["password"])
+
+        if port == 8883:
+            client.tls_set(cert_reqs=ssl.CERT_NONE)
+            client.tls_insecure_set(True)
+
+        client.connect(host, port, keepalive=10)
+        client.publish(topic, json.dumps(payload), qos=1)
+        client.disconnect()
+        print(f"[MQTT Push] Successfully dispatched alert to XiaoZhi topic {topic}: {text}")
+        return True
+    except Exception as e:
+        print(f"[MQTT Push Error]: {e}")
+        return False
+
 @router.post("/api/v1/agent/speak", summary="Broadcast Speech & Screen Message to ESP32 Bot")
 async def broadcast_speech_to_bot(req: dict, request: Request):
     """
@@ -567,19 +614,23 @@ async def broadcast_speech_to_bot(req: dict, request: Request):
         except Exception:
             subscribers.discard(q)
 
-    # 3. Push over hardware WebSocket channel if connected
+    # 3. Push to XiaoZhi MQTT Cloud Broker directly to device topic
+    mqtt_sent = push_mqtt_alert_to_cloud(dev_id, text, emotion)
+
+    # 4. Push over hardware WebSocket channel if connected
     try:
         from backend.routers.telemetry import push_message_to_device
         await push_message_to_device(dev_id, text, emotion)
     except Exception:
         pass
 
-    # 4. Queue for hardware listener
+    # 5. Queue for hardware listener
     queue_message_for_esp32(text, dev_id)
 
     return {
         "status": "success",
         "message": f"Broadcasted speech to {dev_id}: {text}",
         "entry_id": entry_id,
+        "mqtt_cloud_push": mqtt_sent,
         "timestamp": ts_iso,
     }

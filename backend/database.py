@@ -81,7 +81,18 @@ def init_db():
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_device_id ON agent_dispatch_logs (device_id);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_action ON agent_dispatch_logs (action);")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_agent_created_at ON agent_dispatch_logs (created_at);")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS device_mqtt_credentials (
+                device_id TEXT PRIMARY KEY,
+                endpoint TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                username TEXT,
+                password TEXT,
+                publish_topic TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_mqtt_device_id ON device_mqtt_credentials (device_id);")
 
         # Seed sample todos if table is empty
         cur = conn.cursor()

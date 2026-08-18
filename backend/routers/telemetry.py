@@ -109,6 +109,32 @@ async def ingest_device_data(
                 "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
                 (entry_id, payload.device_id, payload.category, payload.data, client_ip),
             )
+
+            # If device is syncing its MQTT cloud credentials
+            if payload.category == "mqtt_registration":
+                try:
+                    meta = json.loads(payload.data)
+                    conn.execute("""
+                        INSERT INTO device_mqtt_credentials (device_id, endpoint, client_id, username, password, publish_topic, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(device_id) DO UPDATE SET
+                            endpoint=excluded.endpoint,
+                            client_id=excluded.client_id,
+                            username=excluded.username,
+                            password=excluded.password,
+                            publish_topic=excluded.publish_topic,
+                            updated_at=CURRENT_TIMESTAMP;
+                    """, (
+                        payload.device_id,
+                        meta.get("endpoint", "mqtt.xiaozhi.me:8883"),
+                        meta.get("client_id", ""),
+                        meta.get("username", ""),
+                        meta.get("password", ""),
+                        meta.get("publish_topic", "")
+                    ))
+                    print(f"[MQTT Auto-Registration] Successfully registered device {payload.device_id} for direct cloud push!")
+                except Exception as ex:
+                    print(f"[MQTT Auto-Registration Error]: {ex}")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
