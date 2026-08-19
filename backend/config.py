@@ -6,6 +6,23 @@ from typing import Dict, List, Optional
 from fastapi import HTTPException, Request, status
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Automatic local .env loader (runs first before evaluating any environment vars)
+def load_env():
+    env_path = os.path.join(BASE_DIR, ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, val = line.split("=", 1)
+                        os.environ[key.strip()] = val.strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+load_env()
+
 DB_PATH = os.path.join(BASE_DIR, "esp32_telemetry.db")
 MUSIC_DIR = os.path.join(BASE_DIR, "music")
 PLUGINS_DIR = os.path.join(BASE_DIR, "plugins")
@@ -108,22 +125,6 @@ def validate_production_secrets():
             raise RuntimeError(f"[FATAL] STRICT_SECURITY is enabled. Server cannot boot without: {', '.join(missing)}")
         else:
             print(f"{msg} Running in open/development mode.")
-
-# Automatic local .env loader
-def load_env():
-    env_path = os.path.join(BASE_DIR, ".env")
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        key, val = line.split("=", 1)
-                        os.environ[key.strip()] = val.strip().strip('"').strip("'")
-        except Exception:
-            pass
-
-load_env()
 
 ALLOWED_ORIGINS = [
     origin.strip()
