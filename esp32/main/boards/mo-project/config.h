@@ -28,10 +28,11 @@
 #define DEFAULT_WIFI_SSID "MoiPhone"
 #define DEFAULT_WIFI_PASSWORD "1234567890"
 
-#define BACKEND_SERVER_URL "http://136.64.148.228/api/v1/device/data"
-#define BACKEND_AGENT_URL "http://136.64.148.228/api/v1/agent/dispatch"
-#define BACKEND_TODOS_URL "http://136.64.148.228/api/v1/todos"
-#define BACKEND_MUSIC_VOICE_URL "http://136.64.148.228/api/v1/music/voice-action"
+#define BACKEND_BASE_URL "http://34.58.4.228:8000"
+#define BACKEND_SERVER_URL "http://34.58.4.228:8000/api/v1/device/data"
+#define BACKEND_AGENT_URL "http://34.58.4.228:8000/api/v1/agent/dispatch"
+#define BACKEND_TODOS_URL "http://34.58.4.228:8000/api/v1/todos"
+#define BACKEND_MUSIC_VOICE_URL "http://34.58.4.228:8000/api/v1/music/voice-action"
 #define BACKEND_SERVER_TIMEOUT_MS 4000
 
 #endif  // _BOARD_CONFIG_H_

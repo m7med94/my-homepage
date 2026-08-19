@@ -557,7 +557,7 @@ private:
     void PlayMusicTrackInBackground(const std::string& audio_url) {
         std::string full_url = audio_url;
         if (full_url.rfind("http", 0) != 0) {
-            full_url = "http://136.64.148.228" + full_url;
+            full_url = std::string(BACKEND_BASE_URL) + full_url;
         }
 
         // Spawn detached task to download OGG Opus audio and pipe to speaker
