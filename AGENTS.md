@@ -61,3 +61,20 @@ You have two simple ways to add new voice capabilities to the assistant:
 > 3. Then deploy to the remote server via SSH by pulling the latest commit (`git pull origin main`) and restarting the service.
 > 4. Never do direct live code hacking over SSH without syncing through Git.
 
+---
+
+## 🔑 Remote Server SSH Connection Details
+
+- **User**: `m7med_am`
+- **Current GCP IP**: `34.58.4.228` (or dynamic GCP external IP)
+- **SSH Key Location (Windows)**: `C:\Users\m7med\.ssh\gcp_key`
+- **Standard SSH Command**:
+  ```powershell
+  ssh -i "C:\Users\m7med\.ssh\gcp_key" -o ServerAliveInterval=30 m7med_am@<SERVER_IP>
+  ```
+- **Single-command Remote Deploy**:
+  ```powershell
+  ssh -i "C:\Users\m7med\.ssh\gcp_key" -o StrictHostKeyChecking=no m7med_am@<SERVER_IP> "cd ~/my-homepage && git pull origin main && sudo systemctl restart my-homepage || true"
+  ```
+
+
