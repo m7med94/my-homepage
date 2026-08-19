@@ -53,9 +53,13 @@ def handle_intent(instruction: str, context: str = "") -> Optional[str]:
     """
     text = instruction.lower().strip()
 
-    # Ignore queries meant for other system features (todos, music, weather, sensors)
+    # Ignore queries meant for other system features (todos, music, weather, sensors, math)
     system_keywords = ["todo", "to-do", "task", "reminder", "playlist", "song", "music", "sensor", "battery", "weather", "temperature", "humidity"]
     if any(k in text for k in system_keywords) and not text.startswith("wikipedia"):
+        return None
+
+    # Ignore pure math calculations (let Gemini or math calculator handle them)
+    if re.search(r"\d+\s*[\+\-\*\/xX\^]\s*\d+", text) and not text.startswith("wikipedia"):
         return None
 
     # Trigger patterns

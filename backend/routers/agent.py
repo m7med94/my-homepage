@@ -99,13 +99,9 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[tupl
                 print(f"[Agent Plugin Error] Error executing '{fname}': {e}")
     return None
 
-@router.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry, Task & Music Awareness")
-async def ai_chat(req: ChatRequest, request: Request):
-    """High-speed server-side AI chat powered exclusively by Google Gemini."""
+async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
+    """Core Gemini AI chat logic with telemetry, task & music context."""
     global ACTIVE_GEMINI_MODEL
-    require_dashboard_session(request)
-    client_ip = request.client.host if request.client else "unknown"
-    enforce_rate_limit(f"ai:{client_ip}", limit=20)
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY")
 
     telemetry_context = ""
@@ -213,19 +209,24 @@ async def ai_chat(req: ChatRequest, request: Request):
 
     return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
 
-@router.post("/api/v1/agent/dispatch", summary="Universal Server-Side Agent Dispatcher")
-async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request):
+@router.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry, Task & Music Awareness")
+async def ai_chat(req: ChatRequest, request: Request):
+    """High-speed server-side AI chat powered exclusively by Google Gemini."""
+    require_dashboard_session(request)
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_rate_limit(f"ai:{client_ip}", limit=20)
+    return await ai_chat_core(req, client_ip=client_ip)
+
+async def process_agent_instruction_core(instruction: str, device_id: str = "mo-project-c3", context: str = "general", client_ip: str = "internal", request_obj: Optional[Request] = None) -> dict:
     """
-    Central server-side agent hub for ESP32 and web clients.
+    Core server-side agent execution logic.
     Processes tasks, to-dos, music playback, telemetry queries, and general AI reasoning.
     Logs every dispatch event for full transparency and telemetry auditing.
     """
     import time
     start_time = time.time()
     log_id = str(uuid.uuid4())
-    client_ip = request.client.host if request.client else "unknown"
-    enforce_rate_limit(f"agent:{client_ip}", limit=60)
-    inst = req.instruction.strip()
+    inst = instruction.strip()
     lower_inst = inst.lower()
 
     def record_agent_log(action: str, reply: str, plugin_name: Optional[str] = None, extra_data: Optional[dict] = None, status_str: str = "success"):
@@ -235,7 +236,7 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
             with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
                 conn.execute(
                     "INSERT INTO agent_dispatch_logs (id, device_id, instruction, action, reply, plugin_name, latency_ms, client_ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (log_id, req.device_id or "mo-project-c3", inst, action, reply, plugin_name, duration_ms, client_ip, now_iso)
+                    (log_id, device_id or "mo-project-c3", inst, action, reply, plugin_name, duration_ms, client_ip, now_iso)
                 )
         except Exception as e:
             print(f"[Agent Log DB Error] {e}")
@@ -244,7 +245,7 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
         log_event = {
             "type": "agent_dispatch_log",
             "id": log_id,
-            "device_id": req.device_id or "mo-project-c3",
+            "device_id": device_id or "mo-project-c3",
             "instruction": inst,
             "action": action,
             "reply": reply,
@@ -273,7 +274,7 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
         return res_payload
 
     # 1. Check custom server plugins first
-    plugin_res = execute_server_plugins(inst, req.context or "")
+    plugin_res = execute_server_plugins(inst, context or "")
     if plugin_res:
         plugin_result, plugin_name = plugin_res
         return record_agent_log(action="plugin_execution", reply=plugin_result, plugin_name=plugin_name)
@@ -420,9 +421,26 @@ async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request
         return record_agent_log(action="telemetry_query", reply=reply_msg)
 
     # 5. General AI Inference (Gemini / AI Model with full telemetry & task context)
-    ai_resp = await ai_chat(ChatRequest(message=inst, include_telemetry=True), request)
+    ai_resp = await ai_chat_core(ChatRequest(message=inst, include_telemetry=True), client_ip=client_ip)
     reply_text = ai_resp.get("reply", "I processed your request.")
     return record_agent_log(action="ai_inference", reply=reply_text)
+
+@router.post("/api/v1/agent/dispatch", summary="Universal Server-Side Agent Dispatcher")
+async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request):
+    """
+    Central server-side agent hub for ESP32 and web clients.
+    Processes tasks, to-dos, music playback, telemetry queries, and general AI reasoning.
+    Logs every dispatch event for full transparency and telemetry auditing.
+    """
+    client_ip = request.client.host if request and request.client else "unknown"
+    enforce_rate_limit(f"agent:{client_ip}", limit=60)
+    return await process_agent_instruction_core(
+        instruction=req.instruction,
+        device_id=req.device_id or "mo-project-c3",
+        context=req.context or "general",
+        client_ip=client_ip,
+        request_obj=request
+    )
 
 # =========================================================================================
 # AGENT LOGGING & AUDIT ENDPOINTS

@@ -246,9 +246,8 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
         if not instruction:
             return "Please provide an instruction or question."
         try:
-            from backend.routers.agent import dispatch_agent_instruction, AgentDispatchRequest
-            req = AgentDispatchRequest(instruction=instruction, device_id="xiaozhi_mcp_cloud", context="cloud_mcp")
-            resp = await dispatch_agent_instruction(req)
+            from backend.routers.agent import process_agent_instruction_core
+            resp = await process_agent_instruction_core(instruction=instruction, device_id="xiaozhi_mcp_cloud", context="cloud_mcp", client_ip="cloud-mcp")
             return resp.get("reply") or resp.get("summary") or "Query executed successfully."
         except Exception as e:
             return f"Server AI error: {e}"
