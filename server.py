@@ -2,6 +2,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -68,8 +69,31 @@ app.include_router(music_router.router)
 app.include_router(agent_router.router)
 app.include_router(network_router.router)
 
+# 6. Serve Frontend Static Pages & Assets
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+@app.get("/")
+async def serve_index():
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+
+@app.get("/styles.css")
+async def serve_styles():
+    return FileResponse(os.path.join(BASE_DIR, "styles.css"), media_type="text/css")
+
+@app.get("/script.js")
+async def serve_script():
+    return FileResponse(os.path.join(BASE_DIR, "script.js"), media_type="application/javascript")
+
+@app.get("/{page_name}.html")
+async def serve_html(page_name: str):
+    file_path = os.path.join(BASE_DIR, f"{page_name}.html")
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     print(f"Starting SensorsHub & ESP32 Gateway on 0.0.0.0:{port}...")
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
+
