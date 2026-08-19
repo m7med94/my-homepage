@@ -257,10 +257,6 @@
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <h4 style="font-size: 0.82rem; color: #fff;">Smart Controls</h4>
             <label style="display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--text-muted); cursor: pointer;">
-              <input type="checkbox" id="chkAutoSpeak" checked />
-              <span>🔊 Auto Voice Readout (TTS)</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--text-muted); cursor: pointer;">
               <input type="checkbox" id="chkIncludeTelemetry" checked />
               <span>📡 Include Live Sensors Context</span>
             </label>
@@ -461,40 +457,6 @@
         btnMic.style.display = 'none';
       }
 
-      // Voice TTS (Speech Synthesis - Enforced English US Voice)
-      function speakText(text) {
-        if (!document.getElementById('chkAutoSpeak').checked) return;
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const cleanText = text.replace(/[*_#`~>]/g, '').trim();
-          if (!cleanText) return;
-
-          const utterance = new SpeechSynthesisUtterance(cleanText);
-          utterance.lang = 'en-US';
-          utterance.rate = 1.0;
-          utterance.pitch = 1.0;
-
-          // Pick the best natural English voice from the browser's voice list
-          const voices = window.speechSynthesis.getVoices();
-          const bestEnglishVoice = voices.find(v => (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Jenny') || v.name.includes('Zira') || v.name.includes('Guy')) && (v.lang === 'en-US' || v.lang === 'en-GB'))
-            || voices.find(v => v.lang === 'en-US')
-            || voices.find(v => v.lang.startsWith('en'));
-
-          if (bestEnglishVoice) {
-            utterance.voice = bestEnglishVoice;
-          }
-
-          window.speechSynthesis.speak(utterance);
-        }
-      }
-
-      // Preload voices
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.onvoiceschanged = () => {
-          window.speechSynthesis.getVoices();
-        };
-      }
-
       // Form Submit / Call Server-Side AI Endpoint
       chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -533,7 +495,6 @@
           if (loader) {
             loader.innerHTML = formatMarkdown(replyText);
           }
-          speakText(replyText);
           updateSidebarStats();
         } catch (err) {
           const loader = document.getElementById(loadingId);
