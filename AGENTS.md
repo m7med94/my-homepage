@@ -50,3 +50,14 @@ You have two simple ways to add new voice capabilities to the assistant:
 - **XiaoZhi Cloud Gateway (`wss://api.xiaozhi.me/mcp/`)**: Real-time voice LLM, STT, and Neural TTS pipeline.
 - **Backend Hub (`server.py` & `backend/mcp_bridge.py`)**: Owns all tools, databases (SQLite), To-Dos, music vault, AI model inference, and the Cloud MCP WebSocket connection.
 - **Plugins (`plugins/`)**: Drop-in Python scripts for custom capabilities.
+
+---
+
+## 🚀 Deployment & Code Workflow Rule (Git Push -> Pull)
+
+> **CRITICAL DEPLOYMENT RULE FOR FUTURE SESSIONS & AGENTS:**
+> 1. Always make edits **locally** in the project repository workspace.
+> 2. After making changes/fixes, **commit and push to GitHub** (`git push origin main`).
+> 3. Then deploy to the remote server via SSH by pulling the latest commit (`git pull origin main`) and restarting the service.
+> 4. Never do direct live code hacking over SSH without syncing through Git.
+
