@@ -13,6 +13,8 @@ env/
 
 # Databases & Logs
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 *.log
