@@ -84,9 +84,9 @@ def check_esp32_connection_status() -> str:
                 from backend.routers.telemetry import push_message_to_device
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(push_message_to_device(dev_id, greeting_text, "happy"))
+                    loop.create_task(push_message_to_device(dev_id, message=greeting_text, status="Server Notice", emotion="happy"))
                 except RuntimeError:
-                    asyncio.run(push_message_to_device(dev_id, greeting_text, "happy"))
+                    asyncio.run(push_message_to_device(dev_id, message=greeting_text, status="Server Notice", emotion="happy"))
             except Exception as e:
                 pass
         except Exception as ex:

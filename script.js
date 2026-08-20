@@ -769,6 +769,9 @@ function initNetworkTools() {
   const btnCheckEsp32 = document.getElementById('btnCheckEsp32');
   if (btnCheckEsp32) btnCheckEsp32.addEventListener('click', checkEsp32Connection);
 
+  const btnSendEsp32Alert = document.getElementById('btnSendEsp32Alert');
+  if (btnSendEsp32Alert) btnSendEsp32Alert.addEventListener('click', sendEsp32AlertPrompt);
+
   const btnCheckDisk = document.getElementById('btnCheckDisk');
   if (btnCheckDisk) btnCheckDisk.addEventListener('click', checkServerDiskSpace);
 
@@ -871,6 +874,39 @@ async function checkEsp32Connection(showFeedback = false) {
   } catch (err) {
     statusEl.textContent = 'Check Failed';
     statusEl.style.color = 'var(--text-dim)';
+  }
+}
+
+/** Push Custom Alert / Notification to ESP32 OLED & Speaker */
+async function sendEsp32AlertPrompt() {
+  const alertText = window.prompt("Enter alert message to push to ESP32 OLED & speaker:", "Server Status: All systems operational");
+  if (!alertText || !alertText.trim()) return;
+
+  const btn = document.getElementById('btnSendEsp32Alert');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/v1/device/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: 'mo-project-c3',
+        title: 'Server Notice',
+        message: alertText.trim(),
+        emotion: 'happy'
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      logEvent(`ESP32 Alert Dispatched: "${alertText.trim()}" (WS: ${data.pushed_to_ws ? 'Delivered' : 'Queued/Offline'})`, 'info');
+      showToast(data.pushed_to_ws ? 'Alert delivered to ESP32' : 'Alert recorded in telemetry log', 'info');
+    } else {
+      showToast(`Failed to send alert: ${data.detail || 'Error'}`, 'warning');
+    }
+  } catch (err) {
+    showToast(`Error sending alert: ${err.message}`, 'danger');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

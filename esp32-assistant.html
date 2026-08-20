@@ -426,6 +426,10 @@
             <h3>Live Transcripts &amp; Telemetry Stream</h3>
           </div>
           <div style="display: flex; gap: 8px;">
+            <button id="btnSendAlertModal" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem; border-color: rgba(56, 189, 248, 0.4); color: var(--primary); background: rgba(56, 189, 248, 0.08);" title="Push a custom notification alert directly to ESP32 OLED & speaker">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              Send Alert
+            </button>
             <button id="btnRefreshFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
               Refresh
@@ -736,6 +740,37 @@
             } catch (err) {}
           };
         } catch (e) {}
+      }
+
+      // Send Alert button handler
+      const btnSendAlertModal = document.getElementById('btnSendAlertModal');
+      if (btnSendAlertModal) {
+        btnSendAlertModal.addEventListener('click', async () => {
+          const alertText = window.prompt("Enter notification alert to push to ESP32 OLED & speaker:", "Server Status: All systems operational");
+          if (!alertText || !alertText.trim()) return;
+
+          try {
+            const res = await fetch('/api/v1/device/notify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                device_id: 'mo-project-c3',
+                title: 'Server Notice',
+                message: alertText.trim(),
+                emotion: 'happy'
+              })
+            });
+            const data = await res.json();
+            if (res.ok) {
+              showToast(data.pushed_to_ws ? '🔔 Alert sent to ESP32 OLED & speaker' : '📝 Alert recorded in database');
+              loadRecentRecords();
+            } else {
+              showToast(`❌ Error: ${data.detail || 'Failed to send'}`);
+            }
+          } catch (e) {
+            showToast('❌ Network error sending alert');
+          }
+        });
       }
 
       // Refresh button

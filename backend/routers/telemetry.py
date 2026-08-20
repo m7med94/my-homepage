@@ -24,25 +24,34 @@ router = APIRouter(tags=["Telemetry & Events"])
 # Active WebSocket connections from ESP32 hardware clients (device_id -> WebSocket)
 connected_device_sockets: Dict[str, WebSocket] = {}
 
-async def push_message_to_device(device_id: str, text: str, emotion: str = "happy", audio_url: Optional[str] = None) -> bool:
-    """Instantly pushes a JSON command/speech packet to the connected ESP32 WebSocket client."""
+async def push_message_to_device(
+    device_id: str,
+    message: str = "",
+    text: Optional[str] = None,
+    status: str = "Server Notice",
+    emotion: str = "happy",
+    audio_url: Optional[str] = None,
+) -> bool:
+    """Instantly pushes a JSON alert packet to the connected ESP32 WebSocket client."""
     ws = connected_device_sockets.get(device_id)
     if not ws:
         # Fallback to any connected ESP32 if device_id is generic
         if connected_device_sockets:
             ws = next(iter(connected_device_sockets.values()))
     
+    msg_content = message or text or ""
     if ws:
         try:
             payload = {
-                "action": "speak",
-                "text": text,
+                "type": "alert",
+                "status": status,
+                "message": msg_content,
                 "emotion": emotion,
                 "audio_url": audio_url,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             await ws.send_text(json.dumps(payload))
-            print(f"[Device WebSocket] Pushed message to {device_id}: {text}")
+            print(f"[Device WebSocket] Pushed alert to {device_id}: [{status}] {msg_content}")
             return True
         except Exception as e:
             print(f"[Device WebSocket] Error pushing to {device_id}: {e}")
@@ -53,6 +62,14 @@ class DevicePayload(BaseModel):
     device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address")
     category: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$", description="Log or Sensor category")
     data: str = Field(..., min_length=1, max_length=4000, description="Raw or formatted telemetry payload string")
+
+class DeviceNotifyPayload(BaseModel):
+    device_id: Optional[str] = Field("mo-project-c3", description="Target device ID or MAC")
+    title: Optional[str] = Field("Server Notice", description="Alert title or status header")
+    status: Optional[str] = Field(None, description="Alias for title")
+    message: Optional[str] = Field(None, description="Notification message text")
+    text: Optional[str] = Field(None, description="Alias for message")
+    emotion: Optional[str] = Field("happy", description="Emotion expression (happy, sad, neutral, warning)")
 
 @router.get("/api/v1/events/stream", summary="Live Telemetry Event Stream")
 async def event_stream(request: Request):
@@ -171,6 +188,80 @@ async def ingest_device_data(
         "entry_id": entry_id,
         "device_id": payload.device_id,
         "received_at": timestamp_iso,
+        "broadcast_subscribers": len(subscribers),
+    }
+
+@router.post("/api/v1/device/notify", summary="Push Notification Alert to ESP32 Device")
+async def notify_device(
+    payload: DeviceNotifyPayload,
+    request: Request,
+):
+    """
+    Pushes an immediate notification alert to the connected ESP32 OLED display and speaker,
+    logs the event to SQLite telemetry database, and broadcasts via SSE to web dashboards.
+    """
+    require_dashboard_session(request)
+    msg_text = payload.message or payload.text
+    if not msg_text or not msg_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Notification message cannot be empty"
+        )
+    
+    title = payload.title or payload.status or "Server Notice"
+    dev_id = payload.device_id or "mo-project-c3"
+    emotion = payload.emotion or "happy"
+    client_ip = request.client.host if request.client else "unknown"
+    entry_id = str(uuid.uuid4())
+    ts_iso = datetime.now(timezone.utc).isoformat()
+
+    # 1. Log to SQLite telemetry_logs
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.execute(
+                "INSERT INTO telemetry_logs (id, device_id, category, payload_data, client_ip) VALUES (?, ?, ?, ?, ?)",
+                (entry_id, dev_id, "device_alert", f"[{title}] {msg_text.strip()}", client_ip),
+            )
+    except Exception as e:
+        print(f"[Device Notify] SQLite log error: {e}")
+
+    # 2. Push directly over persistent WebSocket channel to ESP32 hardware client
+    pushed_ws = await push_message_to_device(
+        device_id=dev_id,
+        message=msg_text.strip(),
+        status=title,
+        emotion=emotion,
+    )
+
+    # 3. Broadcast SSE event to live web dashboards
+    notification_event = {
+        "type": "esp32_data",
+        "id": entry_id,
+        "device_id": dev_id,
+        "category": "device_alert",
+        "data": f"[{title}] {msg_text.strip()}",
+        "client_ip": client_ip,
+        "timestamp": ts_iso,
+        "latency_ms": 0.0
+    }
+    event_str = json.dumps(notification_event)
+    for q in list(subscribers):
+        try:
+            q.put_nowait(event_str)
+        except asyncio.QueueFull:
+            subscribers.discard(q)
+
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ALERT DISPATCH] Device:{dev_id} | Title:{title} | Msg:{msg_text.strip()} | WS:{pushed_ws}")
+
+    return {
+        "status": "success",
+        "message": "Alert processed and dispatched",
+        "entry_id": entry_id,
+        "device_id": dev_id,
+        "title": title,
+        "alert_message": msg_text.strip(),
+        "emotion": emotion,
+        "pushed_to_ws": pushed_ws,
         "broadcast_subscribers": len(subscribers),
     }
 
