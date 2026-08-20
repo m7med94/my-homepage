@@ -24,6 +24,51 @@ router = APIRouter(tags=["Telemetry & Events"])
 # Active WebSocket connections from ESP32 hardware clients (device_id -> WebSocket)
 connected_device_sockets: Dict[str, WebSocket] = {}
 
+def publish_mqtt_alert(device_id: str, alert_payload: dict) -> bool:
+    """Publishes a JSON alert payload to the device's MQTT publish_topic if registered in DB."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT endpoint, client_id, username, password, publish_topic FROM device_mqtt_credentials WHERE device_id = ?",
+                (device_id,)
+            ).fetchone()
+            if not row and device_id != "mo-project-c3":
+                # Fallback to any registered device credential if generic
+                row = conn.execute("SELECT endpoint, client_id, username, password, publish_topic FROM device_mqtt_credentials LIMIT 1").fetchone()
+
+        if row and row["endpoint"] and row["publish_topic"]:
+            import paho.mqtt.publish as publish
+            
+            ep = row["endpoint"].split(":")
+            host = ep[0]
+            port = int(ep[1]) if len(ep) > 1 else 1883
+
+            auth = None
+            if row["username"]:
+                auth = {"username": row["username"], "password": row["password"] or ""}
+
+            tls = None
+            if port in (8883, 8884) or "ssl" in host or "tls" in host:
+                import ssl
+                tls = {"ca_certs": None, "cert_reqs": ssl.CERT_NONE}
+
+            publish.single(
+                topic=row["publish_topic"],
+                payload=json.dumps(alert_payload),
+                hostname=host,
+                port=port,
+                client_id=f"server_push_{uuid.uuid4().hex[:6]}",
+                auth=auth,
+                tls=tls,
+                timeout=5.0
+            )
+            print(f"[MQTT Push] Successfully published alert to MQTT topic '{row['publish_topic']}' on {host}:{port}")
+            return True
+    except Exception as e:
+        print(f"[MQTT Push Note] Could not publish via MQTT to {device_id}: {e}")
+    return False
+
 async def push_message_to_device(
     device_id: str,
     message: str = "",
@@ -32,31 +77,34 @@ async def push_message_to_device(
     emotion: str = "happy",
     audio_url: Optional[str] = None,
 ) -> bool:
-    """Instantly pushes a JSON alert packet to the connected ESP32 WebSocket client."""
-    ws = connected_device_sockets.get(device_id)
-    if not ws:
-        # Fallback to any connected ESP32 if device_id is generic
-        if connected_device_sockets:
-            ws = next(iter(connected_device_sockets.values()))
-    
+    """Instantly pushes a JSON alert packet to the connected ESP32 via WebSocket or MQTT."""
     msg_content = message or text or ""
+    payload = {
+        "type": "alert",
+        "status": status,
+        "message": msg_content,
+        "emotion": emotion,
+        "audio_url": audio_url,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+    ws_success = False
+    ws = connected_device_sockets.get(device_id)
+    if not ws and connected_device_sockets:
+        ws = next(iter(connected_device_sockets.values()))
+
     if ws:
         try:
-            payload = {
-                "type": "alert",
-                "status": status,
-                "message": msg_content,
-                "emotion": emotion,
-                "audio_url": audio_url,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
             await ws.send_text(json.dumps(payload))
             print(f"[Device WebSocket] Pushed alert to {device_id}: [{status}] {msg_content}")
-            return True
+            ws_success = True
         except Exception as e:
             print(f"[Device WebSocket] Error pushing to {device_id}: {e}")
             connected_device_sockets.pop(device_id, None)
-    return False
+
+    mqtt_success = await asyncio.to_thread(publish_mqtt_alert, device_id, payload)
+
+    return ws_success or mqtt_success
 
 class DevicePayload(BaseModel):
     device_id: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-\.:@ ]+$", description="Unique Device ID or MAC Address")
@@ -251,7 +299,7 @@ async def notify_device(
         except asyncio.QueueFull:
             subscribers.discard(q)
 
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ALERT DISPATCH] Device:{dev_id} | Title:{title} | Msg:{msg_text.strip()} | WS:{pushed_ws}")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ALERT DISPATCH] Device:{dev_id} | Title:{title} | Msg:{msg_text.strip()} | Pushed:{pushed_ws}")
 
     return {
         "status": "success",
@@ -262,6 +310,7 @@ async def notify_device(
         "alert_message": msg_text.strip(),
         "emotion": emotion,
         "pushed_to_ws": pushed_ws,
+        "pushed_to_device": pushed_ws,
         "broadcast_subscribers": len(subscribers),
     }
 
