@@ -16,16 +16,13 @@ from pydantic import BaseModel, Field
 
 from backend.config import (
     DB_PATH,
-    MUSIC_DIR,
     PLUGINS_DIR,
-    ALLOWED_AUDIO_EXTENSIONS,
     ACTIVE_GEMINI_MODEL,
     is_plugin_enabled,
     require_dashboard_session,
     enforce_rate_limit,
 )
 from backend.events import subscribers
-from backend.routers.music import voice_music_action
 from collections import deque
 
 router = APIRouter(tags=["Agent & ServerAI"])
@@ -100,13 +97,12 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[tupl
     return None
 
 async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
-    """Core Gemini AI chat logic with telemetry, task & music context."""
+    """Core Gemini AI chat logic with telemetry & task context."""
     global ACTIVE_GEMINI_MODEL
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY")
 
     telemetry_context = ""
     todo_context = ""
-    music_context = ""
     if req.include_telemetry:
         try:
             with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
@@ -124,17 +120,12 @@ async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
                     )
                 else:
                     todo_context = "\n[Current User To-Do List]: No pending tasks."
-
-            if os.path.exists(MUSIC_DIR):
-                m_files = [os.path.splitext(f)[0] for f in sorted(os.listdir(MUSIC_DIR)) if os.path.splitext(f)[1].lower() in ALLOWED_AUDIO_EXTENSIONS and not f.startswith(".")]
-                if m_files:
-                    music_context = f"\n[Available Music Library on Server]: {', '.join(m_files[:10])}"
         except Exception:
             pass
 
     system_instruction = (
         "You are SensorsHub ServerAI for Mohammed's smart server and XiaoZhi ESP32 Voice Assistant. "
-        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs, to-do items, and music library when asked."
+        "Answer naturally, informatively, and concisely in 1-3 sentences in English. Refer to live telemetry logs and to-do items when asked."
     )
 
     if not api_key:
@@ -146,7 +137,7 @@ async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
     payload = {
         "contents": [{
             "parts": [{
-                "text": f"{system_instruction}\n{telemetry_context}\n{todo_context}\n{music_context}\n\nUser Question: {req.message}"
+                "text": f"{system_instruction}\n{telemetry_context}\n{todo_context}\n\nUser Question: {req.message}"
             }]
         }],
         "generationConfig": {
@@ -220,7 +211,7 @@ async def ai_chat(req: ChatRequest, request: Request):
 async def process_agent_instruction_core(instruction: str, device_id: str = "mo-project-c3", context: str = "general", client_ip: str = "internal", request_obj: Optional[Request] = None) -> dict:
     """
     Core server-side agent execution logic.
-    Processes tasks, to-dos, music playback, telemetry queries, and general AI reasoning.
+    Processes tasks, to-dos, telemetry queries, and general AI reasoning.
     Logs every dispatch event for full transparency and telemetry auditing.
     """
     import time
@@ -391,25 +382,7 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
             extra_data={"count": len(rows), "items": [dict(r) for r in rows]}
         )
 
-    # 3. Music Vault Intents
-    if any(k in lower_inst for k in ["play music", "play song", "play track", "play playlist", "put on music", "play something"]):
-        query = re.sub(r"^(play\s+music|play\s+song|play\s+track|play\s+playlist|put\s+on\s+music|play\s+something)\s*", "", lower_inst).strip()
-        music_res = voice_music_action(query=query if query else "random", action="play")
-        return record_agent_log(
-            action="music_play",
-            reply=music_res.get("tts_message", "Starting music playback."),
-            extra_data=music_res
-        )
-
-    if any(k in lower_inst for k in ["what music do you have", "list music", "what songs do i have", "list playlists", "show music"]):
-        music_res = voice_music_action(query="", action="list")
-        return record_agent_log(
-            action="music_list",
-            reply=music_res.get("tts_message", "Here is your music library."),
-            extra_data=music_res
-        )
-
-    # 4. Sensor & Telemetry Queries
+    # 3. Sensor & Telemetry Queries
     if any(k in lower_inst for k in ["sensor data", "temperature", "humidity", "telemetry", "device status", "sensor status", "battery status"]):
         with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
             conn.row_factory = sqlite3.Row
@@ -420,7 +393,7 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
             reply_msg = "No recent sensor telemetry records found in the database."
         return record_agent_log(action="telemetry_query", reply=reply_msg)
 
-    # 5. General AI Inference (Gemini / AI Model with full telemetry & task context)
+    # 4. General AI Inference (Gemini / AI Model with full telemetry & task context)
     ai_resp = await ai_chat_core(ChatRequest(message=inst, include_telemetry=True), client_ip=client_ip)
     reply_text = ai_resp.get("reply", "I processed your request.")
     return record_agent_log(action="ai_inference", reply=reply_text)
@@ -429,7 +402,7 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
 async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request):
     """
     Central server-side agent hub for ESP32 and web clients.
-    Processes tasks, to-dos, music playback, telemetry queries, and general AI reasoning.
+    Processes tasks, to-dos, telemetry queries, and general AI reasoning.
     Logs every dispatch event for full transparency and telemetry auditing.
     """
     client_ip = request.client.host if request and request.client else "unknown"

@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from backend.config import DB_PATH, MUSIC_DIR, PLUGINS_DIR
+from backend.config import DB_PATH, PLUGINS_DIR
 
 logger = logging.getLogger("XiaoZhiMCP")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [XiaoZhi MCP] %(message)s")
@@ -76,16 +76,6 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
                     "target": {"type": "string", "description": "Hostname or IP address to ping"}
                 },
                 "required": ["target"]
-            }
-        },
-        {
-            "name": "search_server_music",
-            "description": "Search or list available music tracks and playlists in Mohammed's server music vault.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search keyword for song title or artist, or empty to list all tracks"}
-                }
             }
         },
         {
@@ -194,20 +184,6 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
                 return f"Ping to {target} failed: Target is unreachable ({res.get('status')})."
         except Exception as e:
             return f"Error pinging {target}: {e}"
-
-    elif name == "search_server_music":
-        query = arguments.get("query", "").lower()
-        if not os.path.exists(MUSIC_DIR):
-            return "Server music vault is empty."
-        files = [f for f in os.listdir(MUSIC_DIR) if f.lower().endswith(('.mp3', '.wav', '.ogg', '.opus', '.m4a', '.flac'))]
-        if not files:
-            return "No music files found in the server vault."
-        if query:
-            matched = [f for f in files if query in f.lower()]
-            if matched:
-                return f"Found {len(matched)} matching track(s): " + ", ".join(matched[:5])
-            return f"No tracks found matching '{query}'. Available songs: " + ", ".join(files[:5])
-        return f"Server vault contains {len(files)} track(s): " + ", ".join(files[:6])
 
     elif name == "get_weather":
         city = arguments.get("city", "Cairo").strip()

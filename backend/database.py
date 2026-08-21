@@ -46,25 +46,6 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS playlists (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS playlist_tracks (
-                id TEXT PRIMARY KEY,
-                playlist_id TEXT NOT NULL,
-                track_filename TEXT NOT NULL,
-                track_order INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
-            );
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_playlist_id ON playlist_tracks (playlist_id);")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS agent_dispatch_logs (

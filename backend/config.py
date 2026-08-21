@@ -23,47 +23,10 @@ def load_env():
 
 load_env()
 
-DB_PATH = os.path.join(BASE_DIR, "esp32_telemetry.db")
-MUSIC_DIR = os.path.join(BASE_DIR, "music")
+DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "esp32_telemetry.db"))
 PLUGINS_DIR = os.path.join(BASE_DIR, "plugins")
 
-os.makedirs(MUSIC_DIR, exist_ok=True)
 os.makedirs(PLUGINS_DIR, exist_ok=True)
-
-# Allowed audio formats for music streaming and uploading
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
-
-# DB Path — configurable & absolute
-DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "esp32_telemetry.db"))
-
-# Upload security limits
-MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
-MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
-
-def sanitize_filename(filename: str, fallback_prefix: str = "track") -> str:
-    """
-    Strict filename sanitization preventing path traversal (../, ..\\), null-bytes,
-    hidden files, and unsafe characters across all filesystems.
-    """
-    import re
-    # Extract only the base name
-    clean = os.path.basename(filename.strip().replace("\\", "/"))
-    # Remove null bytes and path separators
-    clean = clean.replace("\0", "").replace("/", "").replace("\\", "")
-    # Remove leading dots to avoid hidden files
-    clean = re.sub(r"^\.+", "", clean)
-    # Allow alphanumeric, hyphens, underscores, dots, and spaces
-    clean = re.sub(r"[^a-zA-Z0-9_\-\. ]", "", clean).strip()
-    
-    name_part, ext_part = os.path.splitext(clean)
-    ext_part = ext_part.lower()
-    
-    if not name_part or not ext_part:
-        import uuid
-        ext_clean = ext_part if ext_part in ALLOWED_AUDIO_EXTENSIONS else ".mp3"
-        return f"{fallback_prefix}_{uuid.uuid4().hex[:8]}{ext_clean}"
-        
-    return f"{name_part}{ext_part}"
 
 # Plugin execution whitelist
 ENABLED_PLUGINS_RAW = os.getenv("ENABLED_PLUGINS", "*")

@@ -6,13 +6,12 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import ALLOWED_ORIGINS, MUSIC_DIR, validate_production_secrets
+from backend.config import ALLOWED_ORIGINS, validate_production_secrets
 from backend.database import init_db
 from backend.routers import (
     auth as auth_router,
     telemetry as telemetry_router,
     todos as todos_router,
-    music as music_router,
     agent as agent_router,
     network as network_router,
 )
@@ -44,15 +43,12 @@ async def lifespan(app: FastAPI):
 # 2. Initialize FastAPI Application
 app = FastAPI(
     title="SensorsHub Core & ESP32 AI Voice Assistant Gateway",
-    description="Modular telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, Music Streaming, Local Network Tools, and Server-Side AI Copilot.",
-    version="2.4.0",
+    description="Modular telemetry ingestion, real-time SSE broadcasting, SQLite WAL persistence, Local Network Tools, and Server-Side AI Copilot.",
+    version="2.5.0",
     lifespan=lifespan,
 )
 
-# 3. Mount /music directory for direct browser and ESP32 audio streaming
-app.mount("/music", StaticFiles(directory=MUSIC_DIR), name="music")
-
-# 4. Browser CORS Middleware
+# 3. Browser CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -61,15 +57,14 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# 5. Include Modular APIRouters
+# 4. Include Modular APIRouters
 app.include_router(auth_router.router)
 app.include_router(telemetry_router.router)
 app.include_router(todos_router.router)
-app.include_router(music_router.router)
 app.include_router(agent_router.router)
 app.include_router(network_router.router)
 
-# 6. Serve Frontend Static Pages & Assets
+# 5. Serve Frontend Static Pages & Assets
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")

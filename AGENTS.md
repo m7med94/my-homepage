@@ -48,7 +48,7 @@ You have two simple ways to add new voice capabilities to the assistant:
 ## 📂 Architecture Overview
 - **ESP32 Microcontroller (`esp32/`)**: Owns only physical hardware (Microphone, ES8311 Audio Codec, OLED Display, Volume, Hardware Sleep).
 - **XiaoZhi Cloud Gateway (`wss://api.xiaozhi.me/mcp/`)**: Real-time voice LLM, STT, and Neural TTS pipeline.
-- **Backend Hub (`server.py` & `backend/mcp_bridge.py`)**: Owns all tools, databases (SQLite), To-Dos, music vault, AI model inference, and the Cloud MCP WebSocket connection.
+- **Backend Hub (`server.py` & `backend/mcp_bridge.py`)**: Owns all tools, databases (SQLite), To-Dos, AI model inference, local network diagnostics, and the Cloud MCP WebSocket connection.
 - **Plugins (`plugins/`)**: Drop-in Python scripts for custom capabilities.
 
 ---
