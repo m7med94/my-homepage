@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SensorsHub — Device Events &amp; To-Do List</title>
+    <title>SensorsHub — Device Mission Events &amp; Task Hub</title>
     <meta
       name="description"
-      content="Real-time live feed, telemetry console, and device task management for Device Events."
+      content="Real-time live feed, telemetry console, and device task management for XiaoZhi ESP32 hardware."
     />
     <!-- Anti-cache headers -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -17,10 +17,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=2.4.1" />
+    <link rel="stylesheet" href="styles.css?v=4.0.0" />
     <style>
       .voice-hero {
         display: flex;
@@ -28,19 +28,22 @@
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 20px;
-        background: var(--panel);
+        background: var(--bg-card);
         border: 1px solid var(--border);
         border-radius: var(--radius-lg);
         padding: 24px 28px;
-        backdrop-filter: blur(16px);
+        backdrop-filter: blur(24px);
+        box-shadow: var(--shadow-card);
+        margin-top: 24px;
+        margin-bottom: 24px;
       }
       .device-info-pill {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        background: rgba(56, 189, 248, 0.1);
-        border: 1px solid rgba(56, 189, 248, 0.25);
-        color: var(--primary);
+        background: rgba(0, 229, 255, 0.1);
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        color: var(--cyan);
         padding: 6px 14px;
         border-radius: var(--radius-full);
         font-family: var(--font-mono);
@@ -49,25 +52,29 @@
       .feed-container {
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: 12px;
         max-height: 520px;
         overflow-y: auto;
         padding-right: 6px;
       }
       .feed-card {
-        background: var(--panel);
+        background: rgba(8, 12, 22, 0.65);
         border: 1px solid var(--border);
         border-radius: var(--radius-md);
-        padding: 18px 22px;
+        padding: 16px 20px;
         display: flex;
         flex-direction: column;
         gap: 10px;
-        transition: all 0.2s ease;
-        animation: slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        transition: all var(--transition-fast);
+        animation: feedCardIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes feedCardIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
       }
       .feed-card:hover {
-        border-color: var(--border-highlight);
-        background: var(--panel-hover);
+        border-color: rgba(0, 229, 255, 0.3);
+        background: rgba(12, 18, 32, 0.85);
       }
       .feed-top {
         display: flex;
@@ -77,7 +84,7 @@
         color: var(--text-dim);
       }
       .feed-msg {
-        font-size: 1.05rem;
+        font-size: 1rem;
         color: #fff;
         font-weight: 500;
         line-height: 1.5;
@@ -90,7 +97,6 @@
         color: var(--text-dim);
         font-family: var(--font-mono);
       }
-
       .feed-del-btn {
         background: transparent;
         border: none;
@@ -98,97 +104,55 @@
         cursor: pointer;
         padding: 4px;
         border-radius: 4px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition: color 0.15s ease, background 0.15s ease;
+        display: grid;
+        place-items: center;
+        transition: color var(--transition-fast);
       }
       .feed-del-btn:hover {
-        color: var(--danger);
-        background: rgba(239, 68, 68, 0.12);
+        color: var(--rose);
       }
-
-      /* To-Do List Styles */
       .todo-section {
-        background: var(--panel);
+        background: var(--bg-card);
         border: 1px solid var(--border);
         border-radius: var(--radius-lg);
-        padding: 24px;
-        backdrop-filter: blur(16px);
+        padding: 26px;
+        backdrop-filter: blur(24px);
+        box-shadow: var(--shadow-card);
+        margin-top: 28px;
+        margin-bottom: 40px;
       }
       .todo-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 16px;
         margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
       }
       .todo-stats {
         display: flex;
-        gap: 8px;
+        gap: 10px;
       }
       .todo-badge {
-        font-size: 0.75rem;
-        padding: 4px 10px;
+        font-family: var(--font-mono);
+        font-size: 0.76rem;
+        padding: 4px 12px;
         border-radius: var(--radius-full);
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.05);
         border: 1px solid var(--border);
+        color: var(--text-muted);
       }
       .todo-badge.active {
-        background: rgba(56, 189, 248, 0.12);
-        color: var(--primary);
-        border-color: rgba(56, 189, 248, 0.3);
+        background: rgba(255, 170, 0, 0.15);
+        border-color: var(--amber);
+        color: var(--amber);
       }
       .todo-form {
         display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 14px;
-      }
-      .todo-input {
-        flex: 1;
-        min-width: 240px;
-        background: rgba(15, 23, 42, 0.8);
-        border: 1px solid var(--border);
-        padding: 12px 18px;
-        border-radius: var(--radius-md);
-        color: #fff;
-        font-size: 0.9rem;
-        outline: none;
-        transition: border-color 0.2s ease;
-      }
-      .todo-input:focus {
-        border-color: var(--primary);
-      }
-      .todo-select {
-        background: rgba(15, 23, 42, 0.8);
-        border: 1px solid var(--border);
-        padding: 12px 16px;
-        border-radius: var(--radius-md);
-        color: var(--text-muted);
-        font-size: 0.85rem;
-        outline: none;
-        cursor: pointer;
-      }
-      .todo-add-btn {
-        background: var(--primary);
-        color: #03141f;
-        border: none;
-        padding: 12px 22px;
-        border-radius: var(--radius-md);
-        font-weight: 600;
-        font-size: 0.88rem;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: transform 0.15s ease, background 0.15s ease;
-      }
-      .todo-add-btn:hover {
-        transform: translateY(-1px);
-        background: #7dd3fc;
+        gap: 12px;
+        margin-bottom: 16px;
       }
       .todo-chips {
         display: flex;
@@ -201,15 +165,15 @@
         border: 1px dashed var(--border);
         color: var(--text-dim);
         font-size: 0.74rem;
-        padding: 4px 10px;
+        padding: 4px 12px;
         border-radius: var(--radius-full);
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--transition-fast);
       }
       .todo-chip:hover {
-        background: rgba(56, 189, 248, 0.1);
-        border-color: var(--primary);
-        color: var(--primary);
+        background: rgba(0, 229, 255, 0.1);
+        border-color: var(--cyan);
+        color: var(--cyan);
       }
       .todo-toolbar {
         display: flex;
@@ -230,211 +194,103 @@
         border: none;
         color: var(--text-dim);
         font-size: 0.8rem;
-        padding: 4px 10px;
+        padding: 5px 12px;
         border-radius: var(--radius-sm);
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--transition-fast);
       }
       .todo-tab.active {
         background: rgba(255, 255, 255, 0.08);
         color: #fff;
         font-weight: 600;
       }
-      .todo-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        max-height: 420px;
-        overflow-y: auto;
-        padding-right: 4px;
-      }
-      .todo-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: 12px 16px;
-        transition: all 0.2s ease;
-        animation: slide-in 0.25s ease forwards;
-      }
-      .todo-item:hover {
-        background: rgba(15, 23, 42, 0.9);
-        border-color: rgba(255, 255, 255, 0.15);
-      }
-      .todo-item.completed {
-        opacity: 0.65;
-        background: rgba(15, 23, 42, 0.3);
-      }
-      .todo-item.completed .todo-text {
-        text-decoration: line-through;
-        color: var(--text-dim);
-      }
-      .todo-left {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex: 1;
-      }
-      .todo-check {
-        width: 20px;
-        height: 20px;
-        border-radius: 6px;
-        border: 2px solid var(--border);
-        background: transparent;
-        cursor: pointer;
-        display: grid;
-        place-items: center;
-        transition: all 0.2s ease;
-        flex-shrink: 0;
-      }
-      .todo-item.completed .todo-check {
-        background: var(--primary);
-        border-color: var(--primary);
-        color: #03141f;
-      }
-      .todo-content {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-      .todo-text {
-        color: #f1f5f9;
-        font-size: 0.92rem;
-        font-weight: 500;
-        line-height: 1.4;
-      }
-      .todo-date {
-        font-size: 0.72rem;
-        color: var(--text-dim);
+      .status-tag {
         font-family: var(--font-mono);
-      }
-      .todo-right {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .todo-priority {
-        font-size: 0.68rem;
+        font-size: 0.7rem;
         padding: 2px 8px;
-        border-radius: var(--radius-full);
-        font-weight: 600;
+        border-radius: 4px;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
       }
-      .todo-priority.high {
-        background: rgba(239, 68, 68, 0.15);
-        color: #f87171;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-      }
-      .todo-priority.normal {
-        background: rgba(56, 189, 248, 0.12);
-        color: var(--primary);
-        border: 1px solid rgba(56, 189, 248, 0.3);
-      }
-      .todo-priority.routine {
-        background: rgba(16, 185, 129, 0.12);
-        color: var(--success);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-      }
-      .todo-del-btn {
-        background: transparent;
-        border: none;
-        color: var(--text-dim);
-        cursor: pointer;
-        padding: 6px;
-        border-radius: var(--radius-sm);
-        display: grid;
-        place-items: center;
-        transition: color 0.15s ease, background 0.15s ease;
-      }
-      .todo-del-btn:hover {
-        color: #f87171;
-        background: rgba(239, 68, 68, 0.1);
-      }
+      .status-tag.online { background: rgba(0, 245, 155, 0.15); color: var(--emerald); border: 1px solid rgba(0, 245, 155, 0.3); }
+      .status-tag.offline { background: rgba(255, 46, 91, 0.15); color: var(--rose); border: 1px solid rgba(255, 46, 91, 0.3); }
     </style>
   </head>
   <body>
     <!-- Ambient Glows -->
-    <div class="ambient-glow glow-1"></div>
-    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-1" style="background: radial-gradient(circle, var(--cyan) 0%, transparent 70%);"></div>
+    <div class="ambient-glow glow-2" style="background: radial-gradient(circle, var(--amber) 0%, transparent 70%);"></div>
 
     <!-- Navigation Header -->
     <header class="topbar">
       <div class="container nav-content">
         <a href="index.html" class="brand">
-          <div class="brand-badge">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-              <line x1="12" y1="19" x2="12" y2="22"></line>
+          <div class="brand-badge" style="border-color: rgba(0, 229, 255, 0.4); color: var(--cyan); box-shadow: 0 0 20px var(--cyan-glow);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/>
             </svg>
           </div>
           <div>
             <span class="brand-title">Device<strong>Events</strong></span>
-            <span class="brand-tag">Live Activity &amp; Tasks</span>
+            <span class="brand-tag">XiaoZhi Telemetry &amp; Mission Feed</span>
           </div>
         </a>
 
         <nav class="nav-links">
-          <a href="index.html" class="nav-link">← Sensors Dashboard</a>
-          <a href="esp32-assistant.html" class="nav-link active">📡 Device Events</a>
-          <a href="serverai.html" class="nav-link" style="color: var(--accent); font-weight: 600;">🤖 ServerAI</a>
-          <a href="music.html" class="nav-link" style="color: #fb7185; font-weight: 600;">🎵 Music Vault</a>
+          <a href="index.html" class="nav-link">⚡ Telemetry Matrix</a>
+          <a href="esp32-assistant.html" class="nav-link active" style="background: var(--cyan); color: #030712; box-shadow: 0 0 16px var(--cyan-glow);">📡 Device Events</a>
+          <a href="serverai.html" class="nav-link" style="color: var(--violet);">🤖 ServerAI Copilot</a>
+          <a href="music.html" class="nav-link" style="color: var(--sonic-pink);">🎵 SoundLab Vault</a>
         </nav>
 
         <div class="nav-actions">
-          <div class="status-indicator">
-            <span class="pulse-dot"></span>
-            <span id="gatewayStatusText">Gateway Online</span>
-          </div>
+          <button id="btnSendAlertModal" class="action-btn" title="Push custom alert directly to ESP32 OLED & speaker">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            Send Alert
+          </button>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="container main-layout" style="gap: 28px;">
-      <!-- Hero Status Header -->
+    <main class="container">
       <section class="voice-hero">
         <div>
-          <h1 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 6px;">Device Events</h1>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">
-            Live transcripts, status telemetry, and device task management for connected hardware.
+          <h1 class="page-title" style="margin-top: 0; font-size: 1.8rem;">Hardware Mission Console</h1>
+          <p class="page-subtitle">
+            Live audio transcripts, hardware state telemetry, and synced tasks for connected XiaoZhi ESP32 clients.
           </p>
         </div>
         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
           <div class="device-info-pill">
-            <span>Device:</span>
+            <span>Active Node:</span>
             <strong style="color: #fff;" id="activeDeviceName">mo-project-c3</strong>
           </div>
-          <div class="device-info-pill" style="border-color: rgba(16, 185, 129, 0.3); color: var(--success); background: rgba(16, 185, 129, 0.1);">
-            <span>Status:</span>
-            <strong>Connected</strong>
+          <div class="device-info-pill" style="border-color: rgba(0, 245, 155, 0.35); color: var(--emerald); background: rgba(0, 245, 155, 0.1);">
+            <span class="pulse-dot"></span>
+            <strong>Live Sync</strong>
           </div>
         </div>
       </section>
 
       <!-- Live Transcripts Feed -->
-      <section class="diag-card" style="padding: 24px;">
-        <div class="diag-header" style="margin-bottom: 16px;">
+      <section class="glass-panel" style="margin-bottom: 28px;">
+        <div class="panel-header" style="margin-bottom: 18px;">
           <div class="diag-title-row">
-            <div class="diag-icon" style="--c: #a855f7;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <div class="diag-icon" style="--c: var(--cyan);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
             </div>
-            <h3>Live Transcripts &amp; Telemetry Stream</h3>
+            <div>
+              <h2 class="panel-title">Live Transcripts &amp; Telemetry Stream</h2>
+              <p class="network-tools-subtitle">Incoming voice utterances, tool dispatches, and alert events broadcasted via SSE.</p>
+            </div>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button id="btnSendAlertModal" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem; border-color: rgba(56, 189, 248, 0.4); color: var(--primary); background: rgba(56, 189, 248, 0.08);" title="Push a custom notification alert directly to ESP32 OLED & speaker">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-              Send Alert
-            </button>
-            <button id="btnRefreshFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem;">
+            <button id="btnRefreshFeed" class="pill-btn">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
               Refresh
             </button>
-            <button id="btnClearFeed" class="pill-btn" style="padding: 6px 14px; font-size: 0.8rem; border-color: rgba(239, 68, 68, 0.3); color: var(--danger); background: rgba(239, 68, 68, 0.08);" title="Clear all telemetry transmissions">
+            <button id="btnClearFeed" class="pill-btn" style="border-color: rgba(255, 46, 91, 0.3); color: var(--rose); background: rgba(255, 46, 91, 0.08);" title="Clear all telemetry transmissions">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               Clear All
             </button>
@@ -452,15 +308,15 @@
       <section class="todo-section">
         <div class="todo-header">
           <div class="diag-title-row">
-            <div class="diag-icon" style="--c: var(--primary);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="diag-icon" style="--c: var(--amber);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 11l3 3L22 4"></path>
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
               </svg>
             </div>
             <div>
-              <h3 style="font-size: 1.15rem; color: #fff; margin-bottom: 2px;">To-Do List</h3>
-              <p style="font-size: 0.78rem; color: var(--text-dim);">Device maintenance, hardware tasks, and smart reminders.</p>
+              <h2 class="panel-title">Hardware &amp; Maintenance Task Hub</h2>
+              <p class="network-tools-subtitle">Device calibration, hardware tasks, and smart voice reminders.</p>
             </div>
           </div>
           <div class="todo-stats">
@@ -475,16 +331,16 @@
             type="text"
             id="todoInput"
             class="todo-input"
-            placeholder="Add new device task (e.g., Calibrate temperature sensor, check battery...)"
+            placeholder="Add new device task (e.g. 'Calibrate DHT22 sensor', 'Check battery voltage')..."
             required
             maxlength="200"
           />
-          <select id="todoPriority" class="todo-select">
+          <select id="todoPriority" class="cyber-select">
             <option value="normal">Normal</option>
             <option value="high">High Priority</option>
             <option value="routine">Routine</option>
           </select>
-          <button type="submit" class="todo-add-btn">
+          <button type="submit" class="btn-cyber primary">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -514,7 +370,7 @@
         </div>
 
         <!-- Task List Container -->
-        <div class="todo-list" id="todoList">
+        <div class="todos-list" id="todoList">
           <!-- Dynamically populated -->
         </div>
       </section>
@@ -528,13 +384,15 @@
       <div class="container footer-content">
         <div class="brand">
           <div class="brand-badge small">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon></svg>
           </div>
-          <span>Sensors<strong>Hub</strong></span>
+          <span>Sensors<strong>Hub</strong> Mission Hub</span>
         </div>
         <p class="footer-copy">© <span id="year"></span> SensorsHub Core. Connected to ESP32 XiaoZhi Assistant.</p>
         <div class="footer-links">
           <a href="index.html">← Sensors Dashboard</a>
+          <a href="serverai.html">ServerAI</a>
+          <a href="music.html">SoundLab</a>
         </div>
       </div>
     </footer>
@@ -542,7 +400,6 @@
     <script>
       const apiUrl = '/api/v1/device/data';
       const sseUrl = '/api/v1/events/stream';
-
       const feedContainer = document.getElementById('liveFeedContainer');
 
       async function ensureDashboardSession() {
@@ -557,12 +414,9 @@
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
           });
-        } catch (e) {
-          // Graceful fallback for offline / open environments
-        }
+        } catch (e) {}
       }
 
-      // Fetch actual stored records & Server Agent logs from backend
       async function loadRecentRecords() {
         try {
           const [telRes, agentRes] = await Promise.allSettled([
@@ -611,7 +465,6 @@
         }
       }
 
-      // Render real items in feed
       function renderFeed(records) {
         if (!records || records.length === 0) {
           feedContainer.innerHTML = '<div style="text-align:center; padding: 36px 0; color: var(--text-dim);">No transmissions yet. Speak to your XiaoZhi assistant or dispatch agent commands to see live logs here!</div>';
@@ -625,7 +478,6 @@
         });
       }
 
-      // Create individual card
       function createFeedCard(item) {
         const card = document.createElement('div');
         card.className = 'feed-card';
@@ -635,10 +487,9 @@
         const formattedTime = item.created_at || item.timestamp ? formatTime(item.created_at || item.timestamp) : 'Just now';
         
         if (item.type === 'agent_log' || item.action) {
-          // Server Agent Dispatch Card
           const actionName = (item.action || 'agent').replace('_', ' ').toUpperCase();
           const pluginBadge = item.plugin_name ? `<span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">🔌 ${escapeHtml(item.plugin_name)}</span>` : '';
-          const latencyBadge = item.latency_ms ? `<span style="font-size: 0.72rem; color: #34d399; margin-left: auto;">⚡ ${item.latency_ms}ms</span>` : '';
+          const latencyBadge = item.latency_ms ? `<span style="font-size: 0.72rem; color: #00f59b; margin-left: auto;">⚡ ${item.latency_ms}ms</span>` : '';
 
           card.innerHTML = `
             <div class="feed-top">
@@ -656,8 +507,8 @@
               <div style="color: var(--text-dim); font-size: 0.78rem; margin-bottom: 2px;">🗣️ Instruction:</div>
               <div style="font-weight: 500;">"${escapeHtml(item.instruction || item.data || '')}"</div>
             </div>
-            <div style="background: rgba(255,255,255,0.03); border-left: 2px solid #a855f7; padding: 6px 10px; border-radius: 0 4px 4px 0; font-size: 0.82rem; color: var(--text-main);">
-              <span style="color: #a855f7; font-weight: 600;">🔊 Reply:</span> ${escapeHtml(item.reply || '')}
+            <div style="background: rgba(255,255,255,0.03); border-left: 2px solid var(--violet); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 0.82rem; color: var(--text-main);">
+              <span style="color: var(--violet); font-weight: 600;">🔊 Reply:</span> ${escapeHtml(item.reply || '')}
             </div>
             <div class="feed-meta" style="margin-top: 8px;">
               <span>Device: <strong>${escapeHtml(item.device_id || 'mo-project-c3')}</strong></span>
@@ -667,8 +518,7 @@
           return card;
         }
 
-        // Standard Hardware Telemetry Card
-        const catClass = item.category === 'alert' ? 'offline' : 'online';
+        const catClass = item.category === 'device_alert' || item.category === 'alert' ? 'offline' : 'online';
         const deleteBtn = item.id ? `
           <button class="feed-del-btn" title="Delete record" data-id="${escapeHtml(item.id)}" data-type="telemetry">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
@@ -692,7 +542,6 @@
         return card;
       }
 
-      // Connect to Real-time SSE Stream for real incoming transmissions & agent logs
       function initSSE() {
         try {
           const sse = new EventSource(sseUrl);
@@ -773,10 +622,8 @@
         });
       }
 
-      // Refresh button
       document.getElementById('btnRefreshFeed').addEventListener('click', loadRecentRecords);
 
-      // Clear All Feed Transmissions & Agent Logs
       const btnClearFeed = document.getElementById('btnClearFeed');
       if (btnClearFeed) {
         btnClearFeed.addEventListener('click', async () => {
@@ -794,7 +641,6 @@
         });
       }
 
-      // Delete Single Feed Card
       feedContainer.addEventListener('click', async (e) => {
         const delBtn = e.target.closest('.feed-del-btn');
         if (!delBtn) return;
@@ -827,7 +673,6 @@
         }
       });
 
-      // Toast notification helper
       function showToast(msg) {
         const stack = document.getElementById('toastStack');
         if (!stack) return;
@@ -858,7 +703,7 @@
       }
 
       // ==========================
-      // TO-DO LIST MANAGEMENT (Synced with Backend API)
+      // TO-DO LIST MANAGEMENT
       // ==========================
       const STORAGE_KEY = 'sensorshub_device_todos';
       let currentTodoFilter = 'all';
@@ -876,11 +721,8 @@
               return;
             }
           }
-        } catch (e) {
-          console.warn('Could not fetch todos from backend, using local cache:', e);
-        }
+        } catch (e) {}
 
-        // Fallback to local storage
         try {
           const stored = localStorage.getItem(STORAGE_KEY);
           inMemoryTodos = stored ? JSON.parse(stored) : [];
@@ -891,15 +733,7 @@
       }
 
       function getTodos() {
-        if (inMemoryTodos && inMemoryTodos.length >= 0) return inMemoryTodos;
-        try {
-          const stored = localStorage.getItem(STORAGE_KEY);
-          if (stored) {
-            inMemoryTodos = JSON.parse(stored);
-            return inMemoryTodos;
-          }
-        } catch (e) {}
-        return [];
+        return inMemoryTodos || [];
       }
 
       function renderTodos() {
@@ -936,19 +770,21 @@
           const dateVal = todo.createdAt || todo.created_at || new Date().toISOString();
           const dateFormatted = new Date(dateVal).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+          const prioClass = (todo.priority || 'medium').toLowerCase();
+
           item.innerHTML = `
             <div class="todo-left">
-              <button type="button" class="todo-check" data-id="${escapeHtml(todo.id)}" title="${todo.completed ? 'Mark as pending' : 'Mark as completed'}">
+              <button type="button" class="todo-check-btn ${todo.completed ? 'checked' : ''}" data-id="${escapeHtml(todo.id)}" title="${todo.completed ? 'Mark as pending' : 'Mark as completed'}">
                 ${todo.completed ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
               </button>
-              <div class="todo-content">
+              <div style="display: flex; flex-direction: column; gap: 2px;">
                 <span class="todo-text">${escapeHtml(todo.text)}</span>
-                <span class="todo-date">${escapeHtml(dateFormatted)}</span>
+                <span style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);">${escapeHtml(dateFormatted)}</span>
               </div>
             </div>
-            <div class="todo-right">
-              <span class="todo-priority ${escapeHtml(todo.priority)}">${escapeHtml(todo.priority)}</span>
-              <button type="button" class="todo-del-btn" data-id="${escapeHtml(todo.id)}" title="Delete task from database">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="todo-priority-badge ${prioClass}">${escapeHtml(todo.priority || 'normal')}</span>
+              <button type="button" class="feed-del-btn todo-del-btn" data-id="${escapeHtml(todo.id)}" title="Delete task">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"></polyline>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -957,8 +793,7 @@
             </div>
           `;
 
-          // Event bindings
-          const checkBtn = item.querySelector('.todo-check');
+          const checkBtn = item.querySelector('.todo-check-btn');
           checkBtn.addEventListener('click', () => toggleTodo(todo.id));
 
           const delBtn = item.querySelector('.todo-del-btn');
@@ -988,11 +823,8 @@
               return;
             }
           }
-        } catch (e) {
-          console.warn('API post failed, saving locally:', e);
-        }
+        } catch (e) {}
 
-        // Local fallback
         const newTodo = {
           id: 'todo_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
           text: trimmed,
@@ -1003,117 +835,92 @@
         inMemoryTodos.unshift(newTodo);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
         renderTodos();
-        showToast(`Task added: "${trimmed}"`);
+        showToast(`Task added locally: "${trimmed}"`);
       }
 
       async function toggleTodo(id) {
-        const found = inMemoryTodos.find(t => t.id === id);
-        if (found) {
-          const newCompleted = !found.completed;
-          found.completed = newCompleted;
-          renderTodos();
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+        const target = inMemoryTodos.find(t => t.id === id);
+        if (!target) return;
+        const newStatus = !target.completed;
+        target.completed = newStatus;
 
-          try {
-            const res = await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ completed: newCompleted })
-            });
-            if (!res.ok) {
-              fetchTodosFromApi();
-            }
-          } catch (e) {
-            fetchTodosFromApi();
-          }
-        }
+        try {
+          await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: newStatus })
+          });
+        } catch (e) {}
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+        renderTodos();
       }
 
       async function deleteTodo(id) {
+        inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
         try {
-          const res = await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
-            method: 'DELETE'
-          });
-          if (res.ok) {
-            inMemoryTodos = inMemoryTodos.filter(t => t.id !== id);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
-            renderTodos();
-            showToast('🗑️ Task deleted from database');
-          } else {
-            showToast('❌ Failed to delete task from server');
-            fetchTodosFromApi();
-          }
-        } catch (e) {
-          showToast('❌ Network error while deleting task');
-          fetchTodosFromApi();
-        }
+          await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        } catch (e) {}
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+        renderTodos();
+        showToast('Task removed');
       }
 
-      function initTodoListeners() {
-        const form = document.getElementById('todoForm');
-        const input = document.getElementById('todoInput');
-        const prioritySelect = document.getElementById('todoPriority');
-
-        form.addEventListener('submit', (e) => {
+      const todoForm = document.getElementById('todoForm');
+      if (todoForm) {
+        todoForm.addEventListener('submit', (e) => {
           e.preventDefault();
-          addTodo(input.value, prioritySelect.value);
+          const input = document.getElementById('todoInput');
+          const prio = document.getElementById('todoPriority');
+          addTodo(input.value, prio.value);
           input.value = '';
         });
-
-        // Quick add chips
-        document.querySelectorAll('.todo-chip').forEach(chip => {
-          chip.addEventListener('click', () => {
-            const task = chip.getAttribute('data-task');
-            const priority = chip.getAttribute('data-priority') || 'normal';
-            addTodo(task, priority);
-          });
-        });
-
-        // Filter tabs
-        document.querySelectorAll('.todo-tab').forEach(tab => {
-          tab.addEventListener('click', () => {
-            document.querySelectorAll('.todo-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            currentTodoFilter = tab.getAttribute('data-filter');
-            renderTodos();
-          });
-        });
-
-        // Clear completed button
-        document.getElementById('btnClearCompleted').addEventListener('click', async () => {
-          try {
-            const res = await fetch('/api/v1/todos?completed=true', { method: 'DELETE' });
-            if (res.ok) {
-              const data = await res.json();
-              inMemoryTodos = inMemoryTodos.filter(t => !t.completed);
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
-              renderTodos();
-              showToast(`🗑️ ${data.message || 'Cleared completed tasks'}`);
-            } else {
-              showToast('❌ Failed to clear completed tasks');
-              fetchTodosFromApi();
-            }
-          } catch (e) {
-            showToast('❌ Network error');
-          }
-        });
-
-        fetchTodosFromApi();
       }
 
-      async function initializeFeed() {
+      document.querySelectorAll('.todo-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          addTodo(chip.dataset.task, chip.dataset.priority);
+        });
+      });
+
+      document.querySelectorAll('.todo-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.todo-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          currentTodoFilter = tab.dataset.filter;
+          renderTodos();
+        });
+      });
+
+      const btnClearCompleted = document.getElementById('btnClearCompleted');
+      if (btnClearCompleted) {
+        btnClearCompleted.addEventListener('click', async () => {
+          const completedIds = inMemoryTodos.filter(t => t.completed).map(t => t.id);
+          inMemoryTodos = inMemoryTodos.filter(t => !t.completed);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryTodos));
+          renderTodos();
+
+          for (const id of completedIds) {
+            try {
+              fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            } catch (e) {}
+          }
+          showToast('Completed tasks cleared');
+        });
+      }
+
+      async function initDeviceAssistant() {
         try {
           await ensureDashboardSession();
           loadRecentRecords();
+          fetchTodosFromApi();
           initSSE();
-          initTodoListeners();
-        } catch (error) {
-          feedContainer.textContent = error.message;
-        }
+        } catch (e) {}
       }
 
       document.getElementById('year').textContent = new Date().getFullYear();
-      initializeFeed();
+      initDeviceAssistant();
     </script>
   </body>
 </html>

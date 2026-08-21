@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SensorsHub Music & Audio Vault — Playlists & ESP32 Streaming</title>
+    <title>SensorsHub SoundLab — Audio Vault &amp; ESP32 Streaming</title>
     <meta
       name="description"
       content="Upload, stream, and manage MP3, OGG, and WAV audio tracks and playlists for SensorsHub and XiaoZhi ESP32 voice streaming."
@@ -17,39 +17,41 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=2.4.2" />
+    <link rel="stylesheet" href="styles.css?v=4.0.0" />
     <style>
       .music-layout {
         display: grid;
         grid-template-columns: 340px 1fr;
         gap: 24px;
         align-items: start;
-        margin-top: 10px;
+        margin-top: 14px;
+        margin-bottom: 40px;
       }
 
       /* Upload Panel */
       .upload-panel {
-        background: var(--panel);
+        background: var(--bg-card);
         border: 1px solid var(--border);
         border-radius: var(--radius-lg);
         padding: 24px;
         display: flex;
         flex-direction: column;
         gap: 18px;
-        backdrop-filter: blur(16px);
+        backdrop-filter: blur(24px);
+        box-shadow: var(--shadow-card);
       }
 
       .drop-zone {
-        border: 2px dashed rgba(56, 189, 248, 0.35);
+        border: 2px dashed rgba(251, 113, 133, 0.35);
         border-radius: var(--radius-md);
         padding: 32px 16px;
         text-align: center;
-        background: rgba(56, 189, 248, 0.03);
+        background: rgba(251, 113, 133, 0.04);
         cursor: pointer;
-        transition: all 0.25s ease;
+        transition: all var(--transition-fast);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -57,29 +59,31 @@
       }
 
       .drop-zone:hover, .drop-zone.dragover {
-        border-color: var(--primary);
-        background: rgba(56, 189, 248, 0.08);
+        border-color: var(--sonic-pink);
+        background: rgba(251, 113, 133, 0.1);
         transform: translateY(-2px);
       }
 
       .drop-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: rgba(56, 189, 248, 0.12);
-        color: var(--primary);
+        width: 52px;
+        height: 52px;
+        border-radius: var(--radius-md);
+        background: rgba(251, 113, 133, 0.15);
+        color: var(--sonic-pink);
         display: grid;
         place-items: center;
+        box-shadow: 0 0 16px var(--sonic-pink-glow);
       }
 
       .drop-title {
-        font-size: 1rem;
-        font-weight: 600;
+        font-family: var(--font-display);
+        font-size: 1.05rem;
+        font-weight: 700;
         color: #fff;
       }
 
       .drop-subtitle {
-        font-size: 0.78rem;
+        font-size: 0.8rem;
         color: var(--text-dim);
       }
 
@@ -87,8 +91,8 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 3px 8px;
-        background: rgba(255, 255, 255, 0.05);
+        padding: 3px 10px;
+        background: rgba(255, 255, 255, 0.06);
         border-radius: var(--radius-full);
         font-size: 0.7rem;
         color: var(--text-muted);
@@ -99,68 +103,77 @@
         display: none;
         flex-direction: column;
         gap: 8px;
+        background: rgba(8, 12, 22, 0.7);
+        border: 1px solid var(--border);
+        padding: 12px;
+        border-radius: var(--radius-md);
       }
 
       .progress-bar-bg {
         width: 100%;
-        height: 8px;
-        background: rgba(255, 255, 255, 0.08);
-        border-radius: 4px;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: var(--radius-full);
         overflow: hidden;
       }
 
       .progress-bar-fill {
-        width: 0%;
         height: 100%;
-        background: linear-gradient(90deg, var(--primary), var(--accent));
-        transition: width 0.15s ease;
+        width: 0%;
+        background: linear-gradient(90deg, var(--sonic-pink), var(--violet));
+        transition: width 0.2s ease;
       }
 
-      /* Navigation Tabs for Music Library */
+      /* Main Library Section */
+      .tracks-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 26px;
+        backdrop-filter: blur(24px);
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        min-height: 560px;
+        box-shadow: var(--shadow-card);
+      }
+
       .library-tabs {
         display: flex;
         gap: 8px;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 12px;
+        background: rgba(8, 12, 22, 0.6);
+        padding: 6px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border);
       }
 
       .tab-btn {
-        background: transparent;
-        border: 1px solid transparent;
-        color: var(--text-dim);
-        padding: 8px 16px;
-        border-radius: var(--radius-md);
-        font-size: 0.88rem;
+        flex: 1;
+        padding: 8px 14px;
+        border-radius: var(--radius-sm);
+        font-family: var(--font-display);
+        font-size: 0.85rem;
         font-weight: 600;
+        background: transparent;
+        border: none;
+        color: var(--text-dim);
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--transition-fast);
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 6px;
       }
 
       .tab-btn:hover {
         color: #fff;
-        background: rgba(255, 255, 255, 0.04);
+        background: rgba(255, 255, 255, 0.05);
       }
 
       .tab-btn.active {
-        color: var(--primary);
-        background: rgba(56, 189, 248, 0.1);
-        border-color: rgba(56, 189, 248, 0.25);
-      }
-
-      /* Main Library Section */
-      .tracks-container {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        padding: 24px;
-        backdrop-filter: blur(16px);
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-        min-height: 540px;
+        background: var(--sonic-pink);
+        color: #030712;
+        box-shadow: 0 0 16px var(--sonic-pink-glow);
       }
 
       .tracks-header {
@@ -174,11 +187,11 @@
       .tracks-count-badge {
         font-family: var(--font-mono);
         font-size: 0.78rem;
-        background: rgba(56, 189, 248, 0.12);
-        color: var(--primary);
-        padding: 4px 12px;
+        background: rgba(251, 113, 133, 0.12);
+        color: var(--sonic-pink);
+        padding: 4px 14px;
         border-radius: var(--radius-full);
-        border: 1px solid rgba(56, 189, 248, 0.25);
+        border: 1px solid rgba(251, 113, 133, 0.3);
       }
 
       .tracks-list {
@@ -191,33 +204,35 @@
       }
 
       .track-card {
-        background: rgba(15, 25, 42, 0.6);
+        background: rgba(8, 12, 22, 0.65);
         border: 1px solid var(--border);
         border-radius: var(--radius-md);
         padding: 14px 18px;
         display: grid;
         grid-template-columns: auto 1fr auto;
         align-items: center;
-        gap: 14px;
-        transition: all 0.2s ease;
+        gap: 16px;
+        transition: all var(--transition-fast);
       }
 
       .track-card:hover {
-        border-color: var(--border-highlight);
-        background: var(--panel-hover);
+        border-color: rgba(251, 113, 133, 0.3);
+        background: rgba(14, 20, 36, 0.85);
       }
 
       .track-card.playing {
-        border-color: var(--primary);
-        background: rgba(56, 189, 248, 0.08);
+        border-color: var(--sonic-pink);
+        background: rgba(251, 113, 133, 0.1);
+        box-shadow: 0 0 20px rgba(251, 113, 133, 0.12);
       }
 
       .track-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
-        color: var(--primary);
+        width: 42px;
+        height: 42px;
+        border-radius: var(--radius-md);
+        background: linear-gradient(135deg, rgba(251, 113, 133, 0.2), rgba(168, 85, 247, 0.2));
+        border: 1px solid rgba(251, 113, 133, 0.3);
+        color: var(--sonic-pink);
         display: grid;
         place-items: center;
         font-size: 1.1rem;
@@ -232,7 +247,8 @@
       }
 
       .track-name {
-        font-size: 0.94rem;
+        font-family: var(--font-display);
+        font-size: 0.96rem;
         font-weight: 600;
         color: #fff;
         white-space: nowrap;
@@ -252,52 +268,54 @@
       .track-controls {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
       }
 
       .btn-play {
-        width: 36px;
-        height: 36px;
+        width: 38px;
+        height: 38px;
         border-radius: 50%;
-        background: var(--primary);
-        color: #03141f;
+        background: var(--sonic-pink);
+        color: #030712;
         border: none;
         cursor: pointer;
         display: grid;
         place-items: center;
-        transition: all 0.2s ease;
+        transition: all var(--transition-fast);
+        box-shadow: 0 0 14px var(--sonic-pink-glow);
       }
 
       .btn-play:hover {
         transform: scale(1.08);
-        box-shadow: 0 0 16px var(--primary-glow);
+        background: #f43f5e;
       }
 
       .btn-icon-action {
-        width: 34px;
-        height: 34px;
-        border-radius: 8px;
+        width: 36px;
+        height: 36px;
+        border-radius: var(--radius-sm);
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid var(--border);
         color: var(--text-muted);
         cursor: pointer;
         display: grid;
         place-items: center;
-        transition: all 0.2s ease;
+        transition: all var(--transition-fast);
       }
 
       .btn-icon-action:hover {
         color: #fff;
-        border-color: var(--border-highlight);
+        border-color: var(--border-light);
+        background: rgba(255, 255, 255, 0.1);
       }
 
       .btn-delete-track:hover {
-        background: #ef4444;
+        background: var(--rose);
         color: #fff;
-        border-color: #ef4444;
+        border-color: var(--rose);
       }
 
-      /* Playlist Cards Layout */
+      /* Playlists Grid */
       .playlists-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -305,23 +323,24 @@
       }
 
       .playlist-card {
-        background: rgba(15, 25, 42, 0.6);
+        background: rgba(8, 12, 22, 0.65);
         border: 1px solid var(--border);
         border-radius: var(--radius-md);
-        padding: 18px;
+        padding: 20px;
         display: flex;
         flex-direction: column;
         gap: 12px;
-        transition: all 0.2s ease;
+        transition: all var(--transition-fast);
       }
 
       .playlist-card:hover {
-        border-color: var(--border-highlight);
-        background: var(--panel-hover);
+        border-color: rgba(251, 113, 133, 0.35);
+        background: rgba(14, 20, 36, 0.85);
       }
 
       .playlist-title {
-        font-size: 1.05rem;
+        font-family: var(--font-display);
+        font-size: 1.1rem;
         font-weight: 700;
         color: #fff;
       }
@@ -332,57 +351,34 @@
         line-height: 1.4;
       }
 
-      /* Voice Assistant Commands Grid */
-      .voice-tips-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 14px;
-      }
-
-      .voice-tip-card {
-        background: rgba(15, 25, 42, 0.5);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .voice-command-pill {
-        display: inline-block;
-        background: rgba(56, 189, 248, 0.12);
-        color: var(--primary);
-        font-family: var(--font-mono);
-        padding: 4px 10px;
-        border-radius: var(--radius-full);
-        font-size: 0.82rem;
-        font-weight: 600;
-      }
-
       /* Persistent Global Audio Player Bar */
       .audio-player-bar {
         position: fixed;
-        bottom: 20px;
+        bottom: 24px;
         left: 50%;
         transform: translateX(-50%);
-        width: calc(100% - 40px);
+        width: calc(100% - 48px);
         max-width: 980px;
-        background: rgba(13, 21, 35, 0.95);
-        border: 1px solid var(--border-highlight);
-        border-radius: var(--radius-lg);
-        padding: 12px 20px;
-        backdrop-filter: blur(20px);
-        box-shadow: var(--shadow-md), 0 0 30px rgba(56, 189, 248, 0.15);
+        background: rgba(10, 14, 24, 0.95);
+        border: 1px solid rgba(251, 113, 133, 0.35);
+        border-radius: var(--radius-xl);
+        padding: 14px 24px;
+        backdrop-filter: blur(24px);
+        box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.8), 0 0 30px rgba(251, 113, 133, 0.15);
         display: none;
         align-items: center;
-        gap: 16px;
-        z-index: 100;
+        gap: 18px;
+        z-index: 1000;
       }
 
       .audio-player-bar.active {
         display: flex;
-        animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        animation: playerSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @keyframes playerSlideUp {
+        from { opacity: 0; transform: translate(-50%, 20px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
       }
 
       .player-track-meta {
@@ -394,8 +390,9 @@
       }
 
       .player-track-name {
-        font-size: 0.9rem;
-        font-weight: 600;
+        font-family: var(--font-display);
+        font-size: 0.94rem;
+        font-weight: 700;
         color: #fff;
         white-space: nowrap;
         overflow: hidden;
@@ -404,22 +401,17 @@
 
       .player-track-sub {
         font-size: 0.72rem;
-        color: var(--primary);
+        color: var(--sonic-pink);
         font-family: var(--font-mono);
       }
 
       .custom-audio-native {
         flex: 1;
-        height: 36px;
+        height: 38px;
         outline: none;
       }
 
-      @keyframes slide-up {
-        from { opacity: 0; transform: translate(-50%, 20px); }
-        to { opacity: 1; transform: translate(-50%, 0); }
-      }
-
-      @media (max-width: 860px) {
+      @media (max-width: 880px) {
         .music-layout {
           grid-template-columns: 1fr;
         }
@@ -428,32 +420,31 @@
   </head>
   <body>
     <!-- Background Ambient Glows -->
-    <div class="ambient-glow glow-1"></div>
-    <div class="ambient-glow glow-2"></div>
-    <div class="ambient-glow glow-3"></div>
+    <div class="ambient-glow glow-1" style="background: radial-gradient(circle, var(--sonic-pink) 0%, transparent 70%);"></div>
+    <div class="ambient-glow glow-2" style="background: radial-gradient(circle, var(--violet) 0%, transparent 70%);"></div>
 
     <!-- Navigation Header -->
     <header class="topbar">
       <div class="container nav-content">
-        <a href="index.html" class="brand" style="text-decoration: none;">
-          <div class="brand-badge">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <a href="index.html" class="brand">
+          <div class="brand-badge" style="border-color: rgba(251, 113, 133, 0.4); color: var(--sonic-pink); box-shadow: 0 0 20px var(--sonic-pink-glow);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <path d="M9 18V5l12-2v13"></path>
               <circle cx="6" cy="18" r="3"></circle>
               <circle cx="18" cy="16" r="3"></circle>
             </svg>
           </div>
           <div>
-            <span class="brand-title">Sensors<strong>Hub</strong></span>
-            <span class="brand-tag">Music Vault & Playlists</span>
+            <span class="brand-title">Sound<strong>Lab</strong> Vault</span>
+            <span class="brand-tag">Audio Stream &amp; Vault Core</span>
           </div>
         </a>
 
         <nav class="nav-links">
-          <a href="index.html" class="nav-link">← Sensors Dashboard</a>
-          <a href="esp32-assistant.html" class="nav-link">📡 Device Events</a>
-          <a href="serverai.html" class="nav-link" style="color: var(--accent); font-weight: 600;">🤖 ServerAI</a>
-          <a href="music.html" class="nav-link active" style="color: #fb7185; font-weight: 600;">🎵 Music Vault</a>
+          <a href="index.html" class="nav-link">⚡ Telemetry Matrix</a>
+          <a href="esp32-assistant.html" class="nav-link" style="color: var(--cyan);">📡 Device Events</a>
+          <a href="serverai.html" class="nav-link" style="color: var(--violet);">🤖 ServerAI Copilot</a>
+          <a href="music.html" class="nav-link active" style="background: var(--sonic-pink); color: #030712; box-shadow: 0 0 16px var(--sonic-pink-glow);">🎵 SoundLab Vault</a>
         </nav>
 
         <div class="nav-actions">
@@ -467,30 +458,21 @@
     </header>
 
     <!-- Main Content -->
-    <main class="container main-layout" style="padding-top: 20px;">
-      <!-- Hero Title -->
-      <section class="section-overview" style="margin-bottom: 16px;">
-        <div class="hero-bar">
-          <div>
-            <h1 class="page-title">Music & Playlists Vault</h1>
-            <p class="page-subtitle">Manage audio tracks, create custom playlists, and stream to web browsers and XiaoZhi ESP32 voice assistants.</p>
-          </div>
-          <div class="quick-controls">
-            <span class="device-info-pill">
-              <span class="pulse-dot"></span>
-              <span>ESP32 Voice Tool: self.music.play</span>
-            </span>
-          </div>
+    <main class="container">
+      <div class="hero-bar" style="margin-top: 24px; margin-bottom: 0;">
+        <div>
+          <h1 class="page-title">Audio Studio &amp; Streaming Matrix</h1>
+          <p class="page-subtitle">Manage audio tracks, create custom playlists, and stream seamlessly to web browsers and XiaoZhi ESP32 voice hardware.</p>
         </div>
-      </section>
+      </div>
 
       <!-- Music Section Layout -->
       <div class="music-layout">
         <!-- Left: Upload Box -->
         <div class="upload-panel">
-          <h3 style="font-size: 1.05rem; color: #fff; display: flex; align-items: center; gap: 8px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            Upload Audio File
+          <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--sonic-pink)" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            Sonic Ingestion Bay
           </h3>
 
           <div class="drop-zone" id="dropZone">
@@ -498,8 +480,8 @@
             <div class="drop-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
             </div>
-            <div class="drop-title">Drag & Drop Music File</div>
-            <div class="drop-subtitle">or click to browse computer</div>
+            <div class="drop-title">Drag &amp; Drop Music File</div>
+            <div class="drop-subtitle">or click to browse local storage</div>
             <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 4px;">
               <span class="file-meta-pill">MP3</span>
               <span class="file-meta-pill">OGG</span>
@@ -520,16 +502,17 @@
 
           <!-- Quick Create Playlist Form -->
           <div style="border-top: 1px solid var(--border); padding-top: 16px; display: flex; flex-direction: column; gap: 10px;">
-            <h4 style="font-size: 0.88rem; color: #fff; display: flex; align-items: center; gap: 6px;">
+            <h4 style="font-family: var(--font-display); font-size: 0.9rem; color: #fff; display: flex; align-items: center; gap: 6px;">
               📑 Create New Playlist
             </h4>
             <input
               type="text"
               id="newPlaylistName"
-              placeholder="e.g. Chill Beats, Morning, Workout"
-              style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: #fff; font-size: 0.84rem;"
+              placeholder="e.g. Chill Beats, Focus, Nightfall"
+              class="aero-input"
+              style="width: 100%;"
             />
-            <button class="action-btn" id="btnCreatePlaylist" style="width: 100%; justify-content: center; padding: 8px;">
+            <button class="btn-cyber" id="btnCreatePlaylist" style="width: 100%; justify-content: center; background: rgba(251, 113, 133, 0.15); border-color: rgba(251, 113, 133, 0.4); color: var(--sonic-pink);">
               + Create Playlist
             </button>
           </div>
@@ -546,7 +529,7 @@
               📑 Playlists (<span id="playlistsCountSpan">0</span>)
             </button>
             <button class="tab-btn" id="tabVoiceBtn" onclick="switchTab('voice')">
-              🎙️ ESP32 Voice Commands
+              🎙️ Voice Commands
             </button>
           </div>
 
@@ -554,8 +537,8 @@
           <div id="viewTracks" style="display: flex; flex-direction: column; gap: 14px;">
             <div class="tracks-header">
               <div>
-                <h3 style="font-size: 1.1rem; color: #fff;">Server Audio Library</h3>
-                <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;">Stored in <code style="color: var(--primary);">/home/m7med_am/my-homepage/music/</code></p>
+                <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: #fff;">Server Audio Library</h3>
+                <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;">Stored in <code style="color: var(--sonic-pink);">/home/m7med_am/my-homepage/music/</code></p>
               </div>
               <span class="tracks-count-badge" id="tracksCountBadge">0 Tracks</span>
             </div>
@@ -571,7 +554,7 @@
           <div id="viewPlaylists" style="display: none; flex-direction: column; gap: 16px;">
             <div class="tracks-header">
               <div>
-                <h3 style="font-size: 1.1rem; color: #fff;">Your Playlists</h3>
+                <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: #fff;">Custom Playlists</h3>
                 <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;">Group your audio files into custom playlists</p>
               </div>
             </div>
@@ -587,36 +570,36 @@
           <div id="viewVoice" style="display: none; flex-direction: column; gap: 16px;">
             <div class="tracks-header">
               <div>
-                <h3 style="font-size: 1.1rem; color: #fff;">XiaoZhi ESP32 Voice Commands</h3>
-                <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;">Speak these commands directly to your ESP32 device</p>
+                <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: #fff;">XiaoZhi ESP32 Voice Directives</h3>
+                <p style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;">Speak these commands directly to your hardware client</p>
               </div>
             </div>
 
-            <div class="voice-tips-grid">
-              <div class="voice-tip-card">
-                <span class="voice-command-pill">"XiaoZhi, play music"</span>
-                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+              <div class="net-action-panel">
+                <span class="pill-btn" style="color: var(--sonic-pink); background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.3); font-weight: 700;">"XiaoZhi, play music"</span>
+                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; margin-top: 6px;">
                   Shuffles a random track from your server music vault.
                 </p>
               </div>
 
-              <div class="voice-tip-card">
-                <span class="voice-command-pill">"XiaoZhi, play [song name]"</span>
-                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5;">
+              <div class="net-action-panel">
+                <span class="pill-btn" style="color: var(--sonic-pink); background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.3); font-weight: 700;">"XiaoZhi, play [song name]"</span>
+                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; margin-top: 6px;">
                   Searches your library and streams the requested track.
                 </p>
               </div>
 
-              <div class="voice-tip-card">
-                <span class="voice-command-pill">"XiaoZhi, play favorites"</span>
-                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5;">
+              <div class="net-action-panel">
+                <span class="pill-btn" style="color: var(--sonic-pink); background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.3); font-weight: 700;">"XiaoZhi, play favorites"</span>
+                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; margin-top: 6px;">
                   Starts playing your Favorites playlist from the server.
                 </p>
               </div>
 
-              <div class="voice-tip-card">
-                <span class="voice-command-pill">"XiaoZhi, what songs do I have?"</span>
-                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5;">
+              <div class="net-action-panel">
+                <span class="pill-btn" style="color: var(--sonic-pink); background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.3); font-weight: 700;">"XiaoZhi, what songs do I have?"</span>
+                <p style="font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; margin-top: 6px;">
                   Reads out the track count and recent songs in your vault.
                 </p>
               </div>
@@ -628,7 +611,7 @@
 
     <!-- Persistent Global Audio Player Bar -->
     <div class="audio-player-bar" id="audioPlayerBar">
-      <div class="track-icon" style="background: rgba(56, 189, 248, 0.15);">
+      <div class="track-icon" style="background: rgba(251, 113, 133, 0.15);">
         🎵
       </div>
       <div class="player-track-meta">
@@ -645,17 +628,17 @@
     <div class="toast-stack" id="toastStack"></div>
 
     <!-- Footer -->
-    <footer class="site-footer" style="margin-top: 60px;">
+    <footer class="site-footer">
       <div class="container footer-content">
         <div class="brand">
           <div class="brand-badge small">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon></svg>
           </div>
-          <span>Sensors<strong>Hub</strong></span>
+          <span>Sensors<strong>Hub</strong> SoundLab</span>
         </div>
-        <p class="footer-copy">© <span id="year"></span> SensorsHub Music Vault. Powered by FastAPI Audio Streaming & ESP32 MCP.</p>
+        <p class="footer-copy">© <span id="year"></span> SensorsHub SoundLab. Powered by FastAPI Audio Streaming &amp; ESP32 MCP.</p>
         <div class="footer-links">
-          <a href="index.html">Dashboard</a>
+          <a href="index.html">← Sensors Dashboard</a>
           <a href="esp32-assistant.html">Device Events</a>
           <a href="serverai.html">ServerAI</a>
         </div>
@@ -663,7 +646,6 @@
     </footer>
 
     <script>
-      // Digital Clock
       function updateClock() {
         const d = new Date();
         const el = document.getElementById('timeDisplay');
@@ -674,7 +656,6 @@
 
       document.getElementById('year').textContent = new Date().getFullYear();
 
-      // Toast notification helper
       function showToast(msg) {
         const stack = document.getElementById('toastStack');
         if (!stack) return;
@@ -692,7 +673,6 @@
         });
       }
 
-      // Tab switcher
       function switchTab(tab) {
         document.getElementById('viewTracks').style.display = tab === 'tracks' ? 'flex' : 'none';
         document.getElementById('viewPlaylists').style.display = tab === 'playlists' ? 'flex' : 'none';
@@ -705,7 +685,6 @@
         if (tab === 'playlists') loadPlaylists();
       }
 
-      // File Drag & Drop & Upload Handling
       const dropZone = document.getElementById('dropZone');
       const fileInput = document.getElementById('fileInput');
       const progressBox = document.getElementById('progressBox');
@@ -742,7 +721,6 @@
         }
       });
 
-      // Chunked 512KB slice upload
       async function handleFileUpload(file) {
         progressBox.style.display = 'flex';
         uploadingFileName.textContent = file.name;
@@ -793,7 +771,6 @@
         }
       }
 
-      // Track List & Playback Controls
       let currentPlayingFile = null;
       let cachedPlaylists = [];
       const audioPlayer = document.getElementById('globalAudioPlayer');
@@ -871,7 +848,6 @@
               </div>
             `;
 
-            // Event bindings
             const playBtn = card.querySelector('.btn-play');
             playBtn.addEventListener('click', () => playTrack(track.url, track.title, track.filename));
 
@@ -896,7 +872,6 @@
         }
       }
 
-      // Playlists Management
       async function loadPlaylists() {
         const grid = document.getElementById('playlistsGrid');
         const countSpan = document.getElementById('playlistsCountSpan');
@@ -933,7 +908,7 @@
 
               <div style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;">
                 ${pl.tracks.map(t => `
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; background: rgba(0,0,0,0.25); padding: 5px 10px; border-radius: 4px;">
                     <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🎵 ${escapeHtml(t.title)}</span>
                     <button onclick="removeTrackFromPlaylist('${escapeHtml(pl.id)}', '${escapeHtml(t.filename)}')" style="background: none; border: none; color: #ef4444; cursor: pointer;">&times;</button>
                   </div>
@@ -941,7 +916,7 @@
               </div>
 
               ${pl.tracks.length > 0 ? `
-                <button class="action-btn" onclick="playPlaylistTracks(${JSON.stringify(pl.tracks).replace(/"/g, '&quot;')})" style="justify-content: center; margin-top: auto; padding: 8px;">
+                <button class="btn-cyber" onclick="playPlaylistTracks(${JSON.stringify(pl.tracks).replace(/"/g, '&quot;')})" style="justify-content: center; margin-top: auto; background: rgba(251, 113, 133, 0.15); border-color: rgba(251, 113, 133, 0.4); color: var(--sonic-pink);">
                   ▶ Play Entire Playlist
                 </button>
               ` : '<div style="font-size: 0.76rem; color: var(--text-dim); text-align: center;">Add tracks using ➕ on All Tracks tab</div>'}
@@ -953,7 +928,6 @@
         }
       }
 
-      // Create playlist
       document.getElementById('btnCreatePlaylist').addEventListener('click', async () => {
         const input = document.getElementById('newPlaylistName');
         const name = input.value.trim();
@@ -962,7 +936,7 @@
           const res = await fetch('/api/v1/playlists', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, description: 'Created from Music Vault' })
+            body: JSON.stringify({ name: name, description: 'Created from SoundLab' })
           });
           if (res.ok) {
             input.value = '';
@@ -1027,7 +1001,6 @@
         } catch (e) {}
       }
 
-      // Continuous Playlist Playback
       let currentPlaylistQueue = [];
       let currentQueueIndex = 0;
 
@@ -1093,7 +1066,6 @@
         loadPlaylists();
       });
 
-      // Initialize
       async function init() {
         await ensureDashboardSession();
         loadTracks();

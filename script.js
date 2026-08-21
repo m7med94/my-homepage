@@ -177,6 +177,7 @@ async function initApp() {
   }
   bindEvents();
   initNetworkTools();
+  initDashboardTodos();
   renderSensors();
   updateTopMetrics();
   updateClock();
@@ -229,6 +230,8 @@ function connectToEsp32Sse() {
         const payload = JSON.parse(e.data);
         if (payload.type === 'esp32_data') {
           handleIncomingEsp32Notification(payload);
+        } else if (payload.type === 'todo_created' || payload.type === 'todo_deleted' || payload.type === 'todo_updated') {
+          fetchDashboardTodos();
         }
       } catch (err) {
         console.error('Error parsing SSE event:', err);
@@ -1031,6 +1034,234 @@ async function runNetworkVoiceQuery(queryText) {
       responseText.textContent = `Error reaching Server Agent: ${err.message}`;
     }
   }
+}
+
+/**
+ * =========================================================================
+ * Dashboard To-Do & Task Management Engine (Synced with Backend /api/v1/todos)
+ * =========================================================================
+ */
+const DASHBOARD_TODO_KEY = 'sensorshub_dashboard_todos';
+let dashboardTodos = [];
+let currentDashboardTodoFilter = 'all';
+
+async function initDashboardTodos() {
+  const btnAdd = document.getElementById('btnAddTodo');
+  const input = document.getElementById('newTodoInput');
+  const selectPrio = document.getElementById('todoPrioritySelect');
+
+  if (btnAdd && input) {
+    btnAdd.addEventListener('click', () => {
+      const text = (input.value || '').trim();
+      const prio = selectPrio ? selectPrio.value : 'medium';
+      if (text) {
+        addDashboardTodo(text, prio);
+        input.value = '';
+      }
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = (input.value || '').trim();
+        const prio = selectPrio ? selectPrio.value : 'medium';
+        if (text) {
+          addDashboardTodo(text, prio);
+          input.value = '';
+        }
+      }
+    });
+  }
+
+  const btnAll = document.getElementById('btnFilterAll');
+  const btnActive = document.getElementById('btnFilterActive');
+  const btnDone = document.getElementById('btnFilterDone');
+  const btnClearDone = document.getElementById('btnClearDoneTodos');
+
+  if (btnAll) btnAll.addEventListener('click', () => setDashboardTodoFilter('all', btnAll));
+  if (btnActive) btnActive.addEventListener('click', () => setDashboardTodoFilter('active', btnActive));
+  if (btnDone) btnDone.addEventListener('click', () => setDashboardTodoFilter('done', btnDone));
+  if (btnClearDone) btnClearDone.addEventListener('click', clearCompletedDashboardTodos);
+
+  await fetchDashboardTodos();
+}
+
+function setDashboardTodoFilter(filterName, activeBtn) {
+  currentDashboardTodoFilter = filterName;
+  document.querySelectorAll('.todos-section .pill-btn').forEach((b) => {
+    if (b.id.startsWith('btnFilter')) b.classList.remove('active');
+  });
+  if (activeBtn) activeBtn.classList.add('active');
+  renderDashboardTodos();
+}
+
+async function fetchDashboardTodos() {
+  try {
+    const res = await fetch('/api/v1/todos');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.todos && Array.isArray(data.todos)) {
+        dashboardTodos = data.todos;
+        localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
+        renderDashboardTodos();
+        return;
+      }
+    }
+  } catch (e) {
+    // Fallback to local cache
+  }
+
+  try {
+    const stored = localStorage.getItem(DASHBOARD_TODO_KEY);
+    dashboardTodos = stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    dashboardTodos = [];
+  }
+  renderDashboardTodos();
+}
+
+function renderDashboardTodos() {
+  const listEl = document.getElementById('todosList');
+  if (!listEl) return;
+
+  const total = dashboardTodos.length;
+  const pending = dashboardTodos.filter((t) => !t.completed).length;
+  const done = dashboardTodos.filter((t) => t.completed).length;
+
+  const statTotal = document.getElementById('statTotalTodos');
+  const statPending = document.getElementById('statPendingTodos');
+  const statDone = document.getElementById('statDoneTodos');
+
+  if (statTotal) statTotal.textContent = total;
+  if (statPending) statPending.textContent = pending;
+  if (statDone) statDone.textContent = done;
+
+  const filtered = dashboardTodos.filter((t) => {
+    if (currentDashboardTodoFilter === 'active') return !t.completed;
+    if (currentDashboardTodoFilter === 'done') return t.completed;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `
+      <div style="text-align: center; padding: 32px 0; color: var(--text-dim); font-size: 0.85rem;">
+        No tasks in this view. Add one above or command your XiaoZhi assistant!
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = '';
+  filtered.forEach((todo) => {
+    const item = document.createElement('div');
+    item.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+    const prio = (todo.priority || 'medium').toLowerCase();
+
+    item.innerHTML = `
+      <div class="todo-left">
+        <button type="button" class="todo-check-btn ${todo.completed ? 'checked' : ''}" title="${todo.completed ? 'Mark pending' : 'Mark completed'}">
+          ${todo.completed ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
+        </button>
+        <span class="todo-text">${escapeHtml(todo.text)}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="todo-priority-badge ${prio}">${escapeHtml(todo.priority || 'medium')}</span>
+        <button type="button" class="feed-del-btn" title="Delete task" style="background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 2px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+    `;
+
+    const checkBtn = item.querySelector('.todo-check-btn');
+    checkBtn.addEventListener('click', () => toggleDashboardTodo(todo.id));
+
+    const delBtn = item.querySelector('.feed-del-btn');
+    delBtn.addEventListener('click', () => deleteDashboardTodo(todo.id));
+
+    listEl.appendChild(item);
+  });
+}
+
+async function addDashboardTodo(text, priority = 'medium') {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  try {
+    const res = await fetch('/api/v1/todos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: trimmed, priority: priority }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.todo) {
+        dashboardTodos.unshift(data.todo);
+        localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
+        renderDashboardTodos();
+        showToast(`Task added: "${trimmed}"`, 'info');
+        logEvent(`To-Do Created: "${trimmed}" [${priority}]`, 'info');
+        return;
+      }
+    }
+  } catch (e) {}
+
+  const newTodo = {
+    id: 'todo_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    text: trimmed,
+    priority: priority,
+    completed: false,
+    createdAt: new Date().toISOString(),
+  };
+  dashboardTodos.unshift(newTodo);
+  localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
+  renderDashboardTodos();
+  showToast(`Task added locally: "${trimmed}"`, 'info');
+}
+
+async function toggleDashboardTodo(id) {
+  const target = dashboardTodos.find((t) => t.id === id);
+  if (!target) return;
+  const newStatus = !target.completed;
+  target.completed = newStatus;
+
+  try {
+    await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: newStatus }),
+    });
+  } catch (e) {}
+
+  localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
+  renderDashboardTodos();
+}
+
+async function deleteDashboardTodo(id) {
+  dashboardTodos = dashboardTodos.filter((t) => t.id !== id);
+  try {
+    await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (e) {}
+
+  localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
+  renderDashboardTodos();
+  showToast('Task deleted', 'info');
+}
+
+async function clearCompletedDashboardTodos() {
+  const completedIds = dashboardTodos.filter((t) => t.completed).map((t) => t.id);
+  dashboardTodos = dashboardTodos.filter((t) => !t.completed);
+  localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
+  renderDashboardTodos();
+
+  for (const id of completedIds) {
+    try {
+      fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (e) {}
+  }
+  showToast('Completed tasks cleared', 'info');
 }
 
 // Attach Event Listeners on DOM Load
