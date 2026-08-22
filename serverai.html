@@ -266,20 +266,31 @@
               </div>
             </div>
 
+            <!-- Sora Long-Term Memory Deck -->
+            <div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-family: var(--font-mono); font-size: 10px; color: #c084fc; letter-spacing: 0.15em; text-transform: uppercase;">🧠 SORA'S CORE MEMORY</span>
+                <span id="memCountBadge" class="badge-status" style="font-size: 10px; padding: 2px 6px;">4 facts</span>
+              </div>
+              <div id="memoryList" style="margin-top: 10px; display: grid; gap: 6px; max-height: 180px; overflow-y: auto;">
+                <!-- Populated dynamically via JS -->
+              </div>
+            </div>
+
             <div>
               <span style="font-family: var(--font-mono); font-size: 10px; color: var(--cyan-core); letter-spacing: 0.15em; text-transform: uppercase;">PROMPT DIRECTIVES</span>
               <div style="display: grid; gap: 8px; margin-top: 10px;">
-                <button class="prompt-chip" onclick="sendDirective('Sora, what is the current temperature and humidity in the living room?')">
-                  ✦ Living room climate stats
+                <button class="prompt-chip" onclick="sendDirective('Sora, what do you remember about me?')">
+                  ✦ What do you remember?
+                </button>
+                <button class="prompt-chip" onclick="sendDirective('Sora, remember that I like concise daily updates.')">
+                  ✦ Teach new memory fact
                 </button>
                 <button class="prompt-chip" onclick="sendDirective('Sora, list my pending to-do tasks.')">
                   ✦ List my pending to-dos
                 </button>
                 <button class="prompt-chip" onclick="sendDirective('Sora, check server RAM and network latency.')">
                   ✦ Server diagnostics report
-                </button>
-                <button class="prompt-chip" onclick="sendDirective('Sora, search Wikipedia for Nikola Tesla.')">
-                  ✦ Search Wikipedia
                 </button>
               </div>
             </div>
@@ -471,18 +482,45 @@
         }
       });
 
-      document.getElementById('btnClearChat').addEventListener('click', () => {
-        messagesBox.innerHTML = '';
-        appendMessage('assistant', 'Session history cleared. How can I assist you?');
-      });
+      async function loadSoraMemories() {
+        try {
+          const res = await fetch('/api/v1/agent/memory');
+          if (!res.ok) return;
+          const data = await res.json();
+          const listEl = document.getElementById('memoryList');
+          const badgeEl = document.getElementById('memCountBadge');
+          if (!listEl) return;
 
-      function escapeHtml(str) {
-        if (typeof str !== 'string') return str;
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          if (badgeEl) badgeEl.textContent = `${data.count || 0} facts`;
+          if (!data.memories || data.memories.length === 0) {
+            listEl.innerHTML = '<div style="font-size: 11px; color: var(--text-dim); padding: 6px;">No memories stored.</div>';
+            return;
+          }
+
+          listEl.innerHTML = data.memories.map(m => `
+            <div style="background: rgba(4,7,14,0.6); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; font-size: 11px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <span style="color: var(--text-silver); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(m.fact)}">✦ ${escapeHtml(m.fact)}</span>
+              <button onclick="deleteMemory('${m.id}')" title="Delete Memory" style="background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 2px;">✕</button>
+            </div>
+          `).join('');
+        } catch (e) {
+          console.warn('Could not load memories:', e);
+        }
+      }
+
+      async function deleteMemory(id) {
+        if (!confirm('Forget this memory fact from Sora?')) return;
+        try {
+          await fetch(`/api/v1/agent/memory/${id}`, { method: 'DELETE' });
+          await loadSoraMemories();
+        } catch (e) {
+          alert('Failed to delete memory: ' + e.message);
+        }
       }
 
       document.addEventListener('DOMContentLoaded', () => {
         ensureDashboardSession();
+        loadSoraMemories();
         const yearEl = document.getElementById('year');
         if (yearEl) yearEl.textContent = new Date().getFullYear();
       });

@@ -43,32 +43,113 @@ def queue_message_for_esp32(text: str, device_id: str = "mo-project-c3", audio_u
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="User question or prompt")
     include_telemetry: Optional[bool] = Field(True, description="Whether to include live sensor context")
+    session_id: Optional[str] = Field("default", max_length=128, description="Session identifier for multi-turn conversational memory")
 
 class AgentDispatchRequest(BaseModel):
     instruction: str = Field(..., min_length=1, max_length=4000, description="User instruction, question, task, or command")
     device_id: Optional[str] = Field("mo-project-c3", max_length=128)
     context: Optional[str] = Field("general", max_length=64)
 
+class SoraMemoryRequest(BaseModel):
+    key: str = Field(..., min_length=1, max_length=128, description="Short memory identifier or topic")
+    fact: str = Field(..., min_length=1, max_length=2000, description="Fact, rule, or preference to remember")
+    category: Optional[str] = Field("general", max_length=64, description="Memory category: user_profile, preference, hardware, note")
+    importance: Optional[int] = Field(3, ge=1, le=5, description="Importance ranking from 1 to 5")
+
 # =========================================================================================
+# SORA PERSISTENT MEMORY & CONVERSATION CONTEXT ENGINE
+# =========================================================================================
+
+def get_sora_memory_context() -> str:
+    """Retrieves all stored long-term memories for prompt injection."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT category, key, fact FROM sora_memory ORDER BY importance DESC, created_at ASC").fetchall()
+        if not rows:
+            return ""
+        return "\n[Sora's Long-Term Memory & User Facts]:\n" + "\n".join(
+            [f"- [{r['category']}] {r['fact']}" for r in rows]
+        )
+    except Exception as e:
+        print(f"[Sora Memory] Error fetching context: {e}")
+        return ""
+
+def get_recent_chat_turns_context(session_id: str = "default", limit: int = 6) -> str:
+    """Retrieves recent conversation turns for conversational continuity."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT role, message FROM sora_chat_turns WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
+                (session_id, limit)
+            ).fetchall()
+        if not rows:
+            return ""
+        turns = list(reversed(rows))
+        return "\n[Recent Conversation Turns with Mohammed]:\n" + "\n".join(
+            [f"{'User' if r['role'] == 'user' else 'Sora'}: {r['message']}" for r in turns]
+        )
+    except Exception:
+        return ""
+
+def record_chat_turn(session_id: str, role: str, message: str):
+    """Records a user or Sora turn into conversation history."""
+    try:
+        turn_id = str(uuid.uuid4())
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.execute(
+                "INSERT INTO sora_chat_turns (id, session_id, role, message) VALUES (?, ?, ?, ?)",
+                (turn_id, session_id, role, message)
+            )
+    except Exception:
+        pass
+
+def save_sora_memory(key: str, fact: str, category: str = "general", importance: int = 3) -> dict:
+    """Saves or updates a memory fact in Sora's long-term memory."""
+    mem_id = f"mem_{uuid.uuid4().hex[:8]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            existing = conn.execute("SELECT id FROM sora_memory WHERE key = ? OR fact = ?", (key, fact)).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE sora_memory SET fact = ?, category = ?, importance = ?, updated_at = ? WHERE id = ?",
+                    (fact, category, importance, now_iso, existing["id"])
+                )
+                mem_id = existing["id"]
+            else:
+                conn.execute(
+                    "INSERT INTO sora_memory (id, category, key, fact, importance, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (mem_id, category, key, fact, importance, now_iso, now_iso)
+                )
+        return {"status": "success", "id": mem_id, "key": key, "fact": fact}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def forget_sora_memory(query: str) -> dict:
+    """Deletes matching memory facts."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            res = conn.execute("DELETE FROM sora_memory WHERE id = ? OR key LIKE ? OR fact LIKE ?", (query, f"%{query}%", f"%{query}%"))
+            return {"status": "success", "deleted": res.rowcount}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def list_sora_memories() -> list:
+    """Returns all stored memories in Sora's brain."""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT id, category, key, fact, importance, created_at, updated_at FROM sora_memory ORDER BY importance DESC, created_at DESC").fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+# =========================================================================
 # DYNAMIC SERVER-SIDE AGENT PLUGINS
-# =========================================================================================
-# 🤖 [FOR FUTURE AGENTS & DEVELOPERS — HOW TO ADD NEW VOICE TOOLS / CAPABILITIES]:
-#
-# DO NOT code or re-flash the ESP32! The ESP32 is a thin client that routes all instructions here.
-#
-# To add a new tool or voice capability:
-#   OPTION A (Preferred - Modular Plugin):
-#     Create a new Python file in the `plugins/` directory (e.g. `plugins/weather.py`, `plugins/home_assistant.py`).
-#     Define:
-#       def handle_intent(instruction: str, context: str = "") -> Optional[str]:
-#           if "your keyword or trigger" in instruction.lower():
-#               # Execute your custom logic, database query, or API call
-#               return "Text response that the ESP32 will speak to the user"
-#           return None
-#
-#   OPTION B (Direct Handler):
-#     Add a new intent branch inside `dispatch_agent_instruction()` below.
-# =========================================================================================
+# =========================================================================
 
 def execute_server_plugins(instruction: str, context: str = "") -> Optional[tuple[str, str]]:
     """Dynamically discovers and executes enabled Python plugins placed in the plugins/ folder."""
@@ -76,7 +157,6 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[tupl
         return None
     for fname in sorted(os.listdir(PLUGINS_DIR)):
         if fname.endswith(".py") and not fname.startswith("__") and not fname.startswith("."):
-            # Check plugin whitelist configuration
             if not is_plugin_enabled(fname):
                 continue
 
@@ -96,10 +176,16 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[tupl
                 print(f"[Agent Plugin Error] Error executing '{fname}': {e}")
     return None
 
-async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
-    """Core Gemini AI chat logic with telemetry & task context."""
+async def ai_chat_core(req: ChatRequest, client_ip: str = "internal", session_id: str = "default") -> dict:
+    """Core Gemini AI chat logic with Sora long-term memory, conversation history & telemetry context."""
     global ACTIVE_GEMINI_MODEL
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY")
+
+    sess_id = req.session_id or session_id or "default"
+    record_chat_turn(sess_id, "user", req.message)
+
+    memory_context = get_sora_memory_context()
+    recent_history = get_recent_chat_turns_context(sess_id, limit=6)
 
     telemetry_context = ""
     todo_context = ""
@@ -125,7 +211,7 @@ async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
 
     system_instruction = (
         "You are Sora, Mohammed's personal intelligent Server AI Agent and core brain for SensorsHub and the XiaoZhi ESP32 Voice Assistant (mo-project-c3). "
-        "You execute server tasks, query real-time sensor telemetry, manage to-do tasks, check system diagnostics, and push notifications to esp32-2. "
+        "You execute server tasks, query real-time sensor telemetry, manage to-do tasks, recall learned memories, check system diagnostics, and push notifications to esp32-2. "
         "Answer naturally, warmly, and concisely in 1-3 sentences in English as Sora."
     )
 
@@ -138,7 +224,7 @@ async def ai_chat_core(req: ChatRequest, client_ip: str = "internal") -> dict:
     payload = {
         "contents": [{
             "parts": [{
-                "text": f"{system_instruction}\n{telemetry_context}\n{todo_context}\n\nUser Question: {req.message}"
+                "text": f"{system_instruction}\n{memory_context}\n{telemetry_context}\n{todo_context}\n{recent_history}\n\nUser Question: {req.message}"
             }]
         }],
         "generationConfig": {
@@ -271,7 +357,47 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
         plugin_result, plugin_name = plugin_res
         return record_agent_log(action="plugin_execution", reply=plugin_result, plugin_name=plugin_name)
 
-    # 2. To-Do & Task Management Intents (Order: Delete -> Complete -> Add -> List)
+    # 2. Sora Long-Term Memory Intents (Remember -> Recall -> Forget)
+    # A) Remember new fact
+    rem_match = re.search(r"(?:remember\s+that\s+|remember\s*:?\s*|learn\s+that\s+|save\s+memory\s*:?\s*)(.+)", lower_inst)
+    if rem_match or lower_inst.startswith("remember ") or lower_inst.startswith("sora, remember ") or lower_inst.startswith("sora remember "):
+        fact_text = rem_match.group(1).strip() if rem_match else inst
+        fact_text = re.sub(r"^sora,?\s*", "", fact_text, flags=re.IGNORECASE).strip()
+        fact_text = re.sub(r"^(?:please\s+)?remember\s+(?:that\s+)?", "", fact_text, flags=re.IGNORECASE).strip()
+        fact_text = fact_text.strip(" \"':“”’‘")
+        if fact_text:
+            key_name = re.sub(r"[^a-zA-Z0-9_]", "_", fact_text[:24]).strip("_").lower() or "user_note"
+            save_sora_memory(key=key_name, fact=fact_text, category="user_note", importance=4)
+            reply_msg = f"I've committed that to my long-term memory, Mohammed: '{fact_text}'."
+            record_chat_turn(device_id or "default", "model", reply_msg)
+            return record_agent_log(action="memory_save", reply=reply_msg, extra_data={"fact": fact_text})
+
+    # B) Recall / List memories
+    if any(k in lower_inst for k in ["what do you remember", "what is in your memory", "list your memory", "show your memory", "recall memory", "what do you know about me", "tell me what you remember"]):
+        mems = list_sora_memories()
+        if mems:
+            facts = [m["fact"] for m in mems[:5]]
+            reply_msg = f"Here is what I remember in my core memory, Mohammed: " + "; ".join(facts) + "."
+        else:
+            reply_msg = "My long-term memory is currently fresh. Tell me 'Sora, remember that...' to teach me facts!"
+        record_chat_turn(device_id or "default", "model", reply_msg)
+        return record_agent_log(action="memory_recall", reply=reply_msg, extra_data={"count": len(mems), "memories": mems})
+
+    # C) Forget memory
+    forg_match = re.search(r"(?:forget\s+that\s+|forget\s+:?\s*|delete\s+memory\s*:?\s*)(.+)", lower_inst)
+    if forg_match or lower_inst.startswith("forget "):
+        target_fact = forg_match.group(1).strip() if forg_match else inst
+        target_fact = re.sub(r"^sora,?\s*", "", target_fact, flags=re.IGNORECASE).strip()
+        target_fact = re.sub(r"^(?:please\s+)?forget\s+(?:that\s+)?", "", target_fact, flags=re.IGNORECASE).strip()
+        res = forget_sora_memory(target_fact)
+        if res.get("deleted", 0) > 0:
+            reply_msg = f"I have deleted '{target_fact}' from my memory."
+        else:
+            reply_msg = f"I couldn't find any stored memory matching '{target_fact}'."
+        record_chat_turn(device_id or "default", "model", reply_msg)
+        return record_agent_log(action="memory_forget", reply=reply_msg)
+
+    # 3. To-Do & Task Management Intents (Order: Delete -> Complete -> Add -> List)
 
     # A) Delete / Remove task
     if any(k in lower_inst for k in ["delete all", "clear all tasks", "clear my todo", "clear to-do", "remove all tasks", "delete all items"]):
@@ -394,8 +520,8 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
             reply_msg = "No recent sensor telemetry records found in the database."
         return record_agent_log(action="telemetry_query", reply=reply_msg)
 
-    # 4. General AI Inference (Gemini / AI Model with full telemetry & task context)
-    ai_resp = await ai_chat_core(ChatRequest(message=inst, include_telemetry=True), client_ip=client_ip)
+    # 4. General AI Inference (Gemini / AI Model with Sora memory & multi-turn history)
+    ai_resp = await ai_chat_core(ChatRequest(message=inst, include_telemetry=True, session_id=device_id or "default"), client_ip=client_ip, session_id=device_id or "default")
     reply_text = ai_resp.get("reply", "I processed your request.")
     return record_agent_log(action="ai_inference", reply=reply_text)
 
@@ -505,4 +631,70 @@ def get_pending_esp32_message(device_id: str = Query("mo-project-c3")):
         "has_message": False,
         "message": None,
     }
+
+# =========================================================================================
+# SORA LONG-TERM MEMORY & CONVERSATION HISTORY REST API
+# =========================================================================================
+
+@router.get("/api/v1/agent/memory", summary="Get All Stored Sora Memories")
+def get_sora_memories(request: Request):
+    """Returns all long-term memory facts stored in Sora's brain."""
+    require_dashboard_session(request)
+    memories = list_sora_memories()
+    return {
+        "status": "success",
+        "count": len(memories),
+        "memories": memories
+    }
+
+@router.post("/api/v1/agent/memory", summary="Teach Sora a New Memory Fact")
+def add_sora_memory(req: SoraMemoryRequest, request: Request):
+    """Teaches Sora a new permanent fact or preference."""
+    require_dashboard_session(request)
+    res = save_sora_memory(
+        key=req.key,
+        fact=req.fact,
+        category=req.category or "general",
+        importance=req.importance or 3
+    )
+    return res
+
+@router.delete("/api/v1/agent/memory/{mem_id}", summary="Delete a Stored Memory from Sora")
+def delete_sora_memory(mem_id: str, request: Request):
+    """Deletes a specific memory fact from Sora's brain."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+        res = conn.execute("DELETE FROM sora_memory WHERE id = ?", (mem_id,))
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Memory record not found")
+    return {"status": "success", "message": f"Deleted memory '{mem_id}'"}
+
+@router.get("/api/v1/agent/history", summary="Get Multi-Turn Chat History")
+def get_chat_history(request: Request, session_id: str = Query("default"), limit: int = Query(20, ge=1, le=100)):
+    """Retrieves recent conversation turns for a specific session."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, session_id, role, message, created_at FROM sora_chat_turns WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
+            (session_id, limit)
+        ).fetchall()
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "count": len(rows),
+        "history": [dict(r) for r in reversed(rows)]
+    }
+
+@router.delete("/api/v1/agent/history", summary="Clear Multi-Turn Chat History")
+def clear_chat_history(request: Request, session_id: Optional[str] = Query(None)):
+    """Clears conversation history for a session or globally."""
+    require_dashboard_session(request)
+    with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+        if session_id:
+            res = conn.execute("DELETE FROM sora_chat_turns WHERE session_id = ?", (session_id,))
+        else:
+            res = conn.execute("DELETE FROM sora_chat_turns")
+        deleted = res.rowcount
+    return {"status": "success", "message": f"Cleared {deleted} conversation turn(s)"}
 

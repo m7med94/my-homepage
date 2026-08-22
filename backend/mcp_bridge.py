@@ -178,6 +178,29 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
                 },
                 "required": ["message"]
             }
+        },
+        {
+            "name": "manage_sora_memory",
+            "description": "Teach Sora new facts/preferences, recall stored memories, or forget facts from Sora's long-term memory.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["remember", "recall", "forget", "list"],
+                        "description": "Action: 'remember' to learn a fact, 'recall' or 'list' to view memories, 'forget' to delete a fact"
+                    },
+                    "fact": {
+                        "type": "string",
+                        "description": "The fact or note to remember or forget"
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Optional short identifier for the memory"
+                    }
+                },
+                "required": ["action"]
+            }
         }
     ]
 
@@ -302,9 +325,34 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
                 status=title,
                 emotion=emotion,
             )
-            return f"Transmitted notification alert '{msg}' to esp32-2 notification receiver."
         except Exception as e:
             return f"Error transmitting alert to ESP32: {e}"
+
+    elif name == "manage_sora_memory":
+        action = arguments.get("action", "recall")
+        fact = arguments.get("fact", "").strip()
+        key = arguments.get("key", "").strip()
+        from backend.routers.agent import save_sora_memory, forget_sora_memory, list_sora_memories
+        if action == "remember":
+            if not fact:
+                return "Please provide the fact you want Sora to remember."
+            key_name = key or re.sub(r"[^a-zA-Z0-9_]", "_", fact[:24]).strip("_").lower() or "user_note"
+            save_sora_memory(key=key_name, fact=fact, category="user_note", importance=4)
+            return f"I have saved that to my long-term memory, Mohammed: '{fact}'."
+        elif action in ("recall", "list"):
+            mems = list_sora_memories()
+            if mems:
+                facts = [m["fact"] for m in mems[:5]]
+                return "Here is what I remember: " + "; ".join(facts) + "."
+            return "My long-term memory is currently empty. Tell me 'Sora, remember that...' to store facts."
+        elif action == "forget":
+            target = fact or key
+            if not target:
+                return "Please specify what memory you would like me to forget."
+            res = forget_sora_memory(target)
+            if res.get("deleted", 0) > 0:
+                return f"I have deleted '{target}' from my memory."
+            return f"No memory matching '{target}' was found."
 
     return f"Tool '{name}' is not recognized."
 
