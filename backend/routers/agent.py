@@ -176,116 +176,432 @@ def execute_server_plugins(instruction: str, context: str = "") -> Optional[tupl
                 print(f"[Agent Plugin Error] Error executing '{fname}': {e}")
     return None
 
-async def ai_chat_core(req: ChatRequest, client_ip: str = "internal", session_id: str = "default") -> dict:
-    """Core Gemini AI chat logic with Sora long-term memory, conversation history & telemetry context."""
+# =========================================================================
+# SORA REACT TOOL DECLARATIONS & EXECUTORS
+# =========================================================================
+
+SORA_REACT_TOOLS = [
+    {
+        "name": "push_esp32_notification",
+        "description": "Transmit a visual alert, notification message, or reminder to the esp32-2 notification receiver screen over WebSocket.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "message": {
+                    "type": "STRING",
+                    "description": "The message text to display on the esp32-2 notification screen."
+                },
+                "emotion": {
+                    "type": "STRING",
+                    "description": "Tone/urgency: 'happy', 'notice', 'warning', 'confused'."
+                }
+            },
+            "required": ["message"]
+        }
+    },
+    {
+        "name": "query_todos",
+        "description": "Retrieve active pending tasks or all tasks from Mohammed's SQLite to-do list.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "status": {
+                    "type": "STRING",
+                    "description": "Filter by status: 'pending' (default) or 'all'."
+                }
+            }
+        }
+    },
+    {
+        "name": "create_todo",
+        "description": "Add a new task or reminder to Mohammed's to-do list.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "text": {
+                    "type": "STRING",
+                    "description": "The task or reminder description."
+                },
+                "priority": {
+                    "type": "STRING",
+                    "description": "Priority level: 'high', 'normal', or 'routine'."
+                }
+            },
+            "required": ["text"]
+        }
+    },
+    {
+        "name": "update_todo",
+        "description": "Mark a task as completed or delete it from the to-do list.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "task_id_or_name": {
+                    "type": "STRING",
+                    "description": "The task ID or keyword in the task text to complete or delete."
+                },
+                "action": {
+                    "type": "STRING",
+                    "description": "Action to perform: 'complete' or 'delete'."
+                }
+            },
+            "required": ["task_id_or_name", "action"]
+        }
+    },
+    {
+        "name": "query_telemetry",
+        "description": "Fetch live sensor telemetry records (temperature, humidity, device status, battery) from the database.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "device_id": {
+                    "type": "STRING",
+                    "description": "Optional device filter, e.g. 'esp32-2' or 'mo-project-c3'."
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Number of recent logs to fetch (1-10)."
+                }
+            }
+        }
+    },
+    {
+        "name": "check_server_health",
+        "description": "Read live server system diagnostics including RAM usage, CPU core count, disk space, and ESP32 gateway state.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {}
+        }
+    },
+    {
+        "name": "ping_network_target",
+        "description": "Perform an ICMP ping to measure latency and test connectivity to any IP or domain (e.g. 1.1.1.1, google.com).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "target": {
+                    "type": "STRING",
+                    "description": "The IP address or domain to ping."
+                }
+            },
+            "required": ["target"]
+        }
+    },
+    {
+        "name": "manage_sora_memory",
+        "description": "Manage Sora's long-term memory: learn a new fact about Mohammed, recall all facts, or forget a specific fact.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "'learn' to store a fact, 'recall' to retrieve all facts, or 'forget' to delete a fact."
+                },
+                "fact": {
+                    "type": "STRING",
+                    "description": "The fact text to remember or forget."
+                },
+                "category": {
+                    "type": "STRING",
+                    "description": "Category for the memory: 'preferences', 'identity', 'schedule', 'general'."
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "get_weather_report",
+        "description": "Get current weather conditions and temperature for any city.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "city": {
+                    "type": "STRING",
+                    "description": "City name, e.g. 'Hannover', 'Cairo', 'Berlin'."
+                }
+            },
+            "required": ["city"]
+        }
+    }
+]
+
+async def execute_sora_tool(tool_name: str, args: dict) -> dict:
+    """Executes a registered Sora tool and returns structured observation data."""
+    try:
+        if tool_name == "push_esp32_notification":
+            msg = args.get("message", "Alert from Sora")
+            emotion = args.get("emotion", "notice")
+            from backend.routers.telemetry import push_message_to_device
+            pushed = await push_message_to_device(
+                device_id="esp32-2",
+                message=msg,
+                status="Sora Alert",
+                emotion=emotion,
+            )
+            return {"status": "success", "pushed": pushed, "device_id": "esp32-2", "message": msg}
+
+        elif tool_name == "query_todos":
+            status = args.get("status", "pending")
+            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+                conn.row_factory = sqlite3.Row
+                sql = "SELECT id, text, priority, completed, created_at FROM todos"
+                if status == "pending":
+                    sql += " WHERE completed = 0"
+                sql += " ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at DESC LIMIT 15"
+                rows = conn.execute(sql).fetchall()
+            return {"status": "success", "count": len(rows), "todos": [dict(r) for r in rows]}
+
+        elif tool_name == "create_todo":
+            text = args.get("text", "").strip()
+            priority = args.get("priority", "normal")
+            if not text:
+                return {"status": "error", "message": "Task description is required."}
+            new_id = str(uuid.uuid4())
+            now_iso = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+                conn.execute("INSERT INTO todos (id, text, priority, completed, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)", (new_id, text, priority, now_iso, now_iso))
+            return {"status": "success", "id": new_id, "text": text, "priority": priority}
+
+        elif tool_name == "update_todo":
+            task_id = args.get("task_id_or_name", "")
+            action = args.get("action", "complete")
+            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+                if action == "complete":
+                    cur = conn.execute("UPDATE todos SET completed = 1, updated_at = ? WHERE id = ? OR text LIKE ?", (datetime.now(timezone.utc).isoformat(), task_id, f"%{task_id}%"))
+                    return {"status": "success", "action": "completed", "rows_affected": cur.rowcount}
+                else:
+                    cur = conn.execute("DELETE FROM todos WHERE id = ? OR text LIKE ?", (task_id, f"%{task_id}%"))
+                    return {"status": "success", "action": "deleted", "rows_affected": cur.rowcount}
+
+        elif tool_name == "query_telemetry":
+            dev_id = args.get("device_id")
+            lim = min(max(args.get("limit", 5), 1), 10)
+            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+                conn.row_factory = sqlite3.Row
+                if dev_id:
+                    rows = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs WHERE device_id = ? ORDER BY created_at DESC LIMIT ?", (dev_id, lim)).fetchall()
+                else:
+                    rows = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT ?", (lim,)).fetchall()
+            return {"status": "success", "records": [dict(r) for r in rows]}
+
+        elif tool_name == "check_server_health":
+            from backend.routers.network import get_server_memory_stats
+            mem = get_server_memory_stats()
+            return {
+                "status": "success",
+                "ram_total_gb": mem.get("total_gb"),
+                "ram_used_gb": mem.get("used_gb"),
+                "ram_percent": mem.get("percent_used"),
+                "cores": 4,
+                "server_time": datetime.now(timezone.utc).isoformat()
+            }
+
+        elif tool_name == "ping_network_target":
+            tgt = args.get("target", "1.1.1.1")
+            from backend.routers.network import execute_icmp_ping
+            res = execute_icmp_ping(tgt, count=1, timeout_sec=2)
+            return {"status": "success", "target": tgt, "reachable": res.get("reachable", False), "latency_ms": res.get("latency_ms")}
+
+        elif tool_name == "manage_sora_memory":
+            act = args.get("action", "recall")
+            fact = args.get("fact", "")
+            cat = args.get("category", "general")
+            if act == "learn" and fact:
+                key = f"key_{uuid.uuid4().hex[:6]}"
+                res = save_sora_memory(key=key, fact=fact, category=cat)
+                return {"status": "success", "learned": res}
+            elif act == "forget" and fact:
+                res = forget_sora_memory(fact)
+                return {"status": "success", "forgotten": res}
+            else:
+                mems = list_sora_memories()
+                return {"status": "success", "memories": mems}
+
+        elif tool_name == "get_weather_report":
+            city = args.get("city", "Cairo")
+            from plugins.weather_plugin import get_city_coordinates, fetch_weather_report
+            coords = get_city_coordinates(city)
+            if coords:
+                lat, lon, name = coords
+                report = fetch_weather_report(lat, lon, name)
+                return {"status": "success", "weather": report}
+            return {"status": "warning", "message": f"Could not find coordinates for {city}"}
+
+        return {"status": "error", "message": f"Unknown tool: {tool_name}"}
+    except Exception as e:
+        return {"status": "error", "message": f"Tool execution failed: {e}"}
+
+async def run_sora_react_loop(
+    prompt: str,
+    session_id: str = "default",
+    client_ip: str = "internal",
+    max_steps: int = 5
+) -> dict:
+    """
+    Sora ReAct (Reasoning + Acting) autonomous agent engine.
+    Iteratively plans, selects tools, executes actions, observes results, and synthesizes final answers.
+    """
     global ACTIVE_GEMINI_MODEL
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY")
-
-    sess_id = req.session_id or session_id or "default"
-    record_chat_turn(sess_id, "user", req.message)
-
-    memory_context = get_sora_memory_context()
-    recent_history = get_recent_chat_turns_context(sess_id, limit=6)
-
-    telemetry_context = ""
-    todo_context = ""
-    if req.include_telemetry:
-        try:
-            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
-                conn.row_factory = sqlite3.Row
-                logs = conn.execute("SELECT device_id, category, payload_data, created_at FROM telemetry_logs ORDER BY created_at DESC LIMIT 6").fetchall()
-                if logs:
-                    telemetry_context = "\n[Current Live Telemetry in Database]:\n" + "\n".join(
-                        [f"- {r['device_id']} [{r['category']}]: {r['payload_data']}" for r in logs]
-                    )
-
-                pending_todos = conn.execute("SELECT text, priority FROM todos WHERE completed = 0 ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END").fetchall()
-                if pending_todos:
-                    todo_context = "\n[Current User To-Do List & Pending Tasks]:\n" + "\n".join(
-                        [f"- {t['text']} (Priority: {t['priority']})" for t in pending_todos]
-                    )
-                else:
-                    todo_context = "\n[Current User To-Do List]: No pending tasks."
-        except Exception:
-            pass
-
-    system_instruction = (
-        "You are Sora, Mohammed's personal intelligent Server AI Agent and core brain for SensorsHub and the XiaoZhi ESP32 Voice Assistant (mo-project-c3). "
-        "You execute server tasks, query real-time sensor telemetry, manage to-do tasks, recall learned memories, check system diagnostics, and push notifications to esp32-2. "
-        "Answer naturally, warmly, and concisely in 1-3 sentences in English as Sora."
-    )
 
     if not api_key:
         return {
             "status": "warning",
-            "reply": "⚠️ Gemini API Key not configured in environment. Please add GEMINI_API_KEY to your server configuration.",
+            "reply": "⚠️ Gemini API Key not configured in environment. Please configure GEMINI_API_KEY.",
+            "steps": []
         }
 
-    payload = {
-        "contents": [{
-            "parts": [{
-                "text": f"{system_instruction}\n{memory_context}\n{telemetry_context}\n{todo_context}\n{recent_history}\n\nUser Question: {req.message}"
-            }]
-        }],
-        "generationConfig": {
-            "temperature": 0.5,
-            "maxOutputTokens": 400
+    sess_id = session_id or "default"
+    record_chat_turn(sess_id, "user", prompt)
+
+    memory_context = get_sora_memory_context()
+    recent_history = get_recent_chat_turns_context(sess_id, limit=4)
+
+    system_instruction = (
+        "You are Sora, Mohammed's personal autonomous Server AI Agent with ReAct (Reasoning + Acting) capability. "
+        "You manage server operations, real-time ESP32-2 notification pushes, SQLite to-do tasks, live sensor telemetry, "
+        "server diagnostics, long-term memory, and network tools. "
+        "When Mohammed asks you to perform actions, check statuses, or solve multi-step requests, call the appropriate tools. "
+        "After observing tool results, provide a warm, concise, and helpful final response (1-3 sentences) as Sora.\n"
+        f"{memory_context}\n"
+        f"{recent_history}"
+    )
+
+    contents = [
+        {
+            "role": "user",
+            "parts": [{"text": prompt}]
         }
-    }
-    req_data = json.dumps(payload).encode("utf-8")
+    ]
 
-    def run_gemini(model_name: str):
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        req_obj = urllib.request.Request(url, data=req_data, headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req_obj, timeout=15) as response:
-            res_body = json.loads(response.read().decode("utf-8"))
-            if "candidates" in res_body and res_body["candidates"]:
-                cand = res_body["candidates"][0]
-                if "content" in cand and "parts" in cand["content"]:
-                    real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p and not p.get("thought", False)]
-                    if not real_parts:
-                        real_parts = [p.get("text", "") for p in cand["content"]["parts"] if "text" in p]
-                    full_text = "".join(real_parts).strip()
-                    if full_text:
-                        return full_text
-            if "error" in res_body:
-                raise Exception(res_body["error"].get("message", "Unknown error"))
-        return None
-
-    if ACTIVE_GEMINI_MODEL:
-        try:
-            ans = await asyncio.to_thread(run_gemini, ACTIVE_GEMINI_MODEL)
-            if ans:
-                return {"status": "success", "reply": ans, "model": ACTIVE_GEMINI_MODEL}
-        except Exception:
-            ACTIVE_GEMINI_MODEL = None
+    steps_taken = []
+    final_reply = ""
+    active_model = ACTIVE_GEMINI_MODEL or "gemini-2.5-flash"
 
     candidate_models = [
-        "gemini-2.5-flash-lite",
-        "gemini-flash-lite-latest",
+        active_model,
         "gemini-2.5-flash",
         "gemini-flash-latest",
         "gemini-2.5-pro",
+        "gemini-2.5-flash-lite",
     ]
+    seen = set()
+    model_queue = [m for m in candidate_models if not (m in seen or seen.add(m))]
 
-    last_err = ""
-    for m in candidate_models:
-        try:
-            ans = await asyncio.to_thread(run_gemini, m)
-            if ans:
-                ACTIVE_GEMINI_MODEL = m
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [AI SUCCESS] Model: {m} | Question: {req.message[:30]}")
-                return {"status": "success", "reply": ans, "model": m}
-        except urllib.error.HTTPError as he:
-            last_err = he.read().decode("utf-8")
-            if he.code in (400, 404):
+    for step_num in range(max_steps):
+        req_payload = {
+            "systemInstruction": {
+                "parts": [{"text": system_instruction}]
+            },
+            "contents": contents,
+            "tools": [
+                {
+                    "functionDeclarations": SORA_REACT_TOOLS
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 600
+            }
+        }
+        req_data = json.dumps(req_payload).encode("utf-8")
+
+        response_json = None
+        used_model = None
+
+        for model_candidate in model_queue:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_candidate}:generateContent?key={api_key}"
+            req_obj = urllib.request.Request(
+                url,
+                data=req_data,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            try:
+                def do_call():
+                    with urllib.request.urlopen(req_obj, timeout=15) as resp:
+                        return json.loads(resp.read().decode("utf-8"))
+                response_json = await asyncio.to_thread(do_call)
+                used_model = model_candidate
+                ACTIVE_GEMINI_MODEL = model_candidate
+                break
+            except urllib.error.HTTPError as he:
+                err_body = he.read().decode("utf-8", errors="ignore")
+                print(f"[Sora ReAct HTTP {he.code}] Model: {model_candidate} | Error: {err_body[:100]}")
+                if he.code in (400, 404):
+                    continue
+                break
+            except Exception as e:
+                print(f"[Sora ReAct Error] Model: {model_candidate} | Error: {e}")
                 continue
-            return {"status": "error", "reply": f"Gemini API Error ({he.code}): {last_err}"}
-        except Exception as e:
-            last_err = str(e)
-            continue
 
-    return {"status": "error", "reply": f"Gemini Gateway Error: {last_err}"}
+        if not response_json or "candidates" not in response_json or not response_json["candidates"]:
+            break
+
+        cand = response_json["candidates"][0]
+        content_obj = cand.get("content", {})
+        parts = content_obj.get("parts", [])
+
+        # Check if model produced function call(s)
+        function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
+
+        if not function_calls:
+            text_parts = [p.get("text", "") for p in parts if "text" in p and not p.get("thought", False)]
+            if not text_parts:
+                text_parts = [p.get("text", "") for p in parts if "text" in p]
+            final_reply = "".join(text_parts).strip()
+            break
+
+        # Append model message with functionCall to contents history
+        contents.append({
+            "role": "model",
+            "parts": parts
+        })
+
+        # Execute each function call
+        for fc in function_calls:
+            fn_name = fc.get("name", "")
+            fn_args = fc.get("args", {})
+            step_record = {
+                "step": step_num + 1,
+                "tool": fn_name,
+                "args": fn_args,
+            }
+
+            tool_result = await execute_sora_tool(fn_name, fn_args)
+            step_record["output"] = tool_result
+            steps_taken.append(step_record)
+
+            # Append functionResponse to contents
+            contents.append({
+                "role": "user",
+                "parts": [{
+                    "functionResponse": {
+                        "name": fn_name,
+                        "response": tool_result
+                    }
+                }]
+            })
+
+    if not final_reply:
+        if steps_taken:
+            last_tool = steps_taken[-1]["tool"]
+            final_reply = f"I've executed {len(steps_taken)} actions using {last_tool}."
+        else:
+            final_reply = "I've processed your instruction."
+
+    record_chat_turn(sess_id, "model", final_reply)
+    return {
+        "status": "success",
+        "reply": final_reply,
+        "steps": steps_taken,
+        "model": ACTIVE_GEMINI_MODEL or "gemini-2.5-flash"
+    }
+
+async def ai_chat_core(req: ChatRequest, client_ip: str = "internal", session_id: str = "default") -> dict:
+    """ServerAI chat powered by Sora ReAct engine."""
+    sess_id = req.session_id or session_id or "default"
+    return await run_sora_react_loop(prompt=req.message, session_id=sess_id, client_ip=client_ip)
 
 @router.post("/api/v1/ai/chat", summary="Server-Side ServerAI Chat with Telemetry, Task & Music Awareness")
 async def ai_chat(req: ChatRequest, request: Request):
@@ -597,10 +913,16 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
             reply_msg = "No recent sensor telemetry records found in the database."
         return record_agent_log(action="telemetry_query", reply=reply_msg)
 
-    # 6. General AI Inference (Gemini / AI Model with Sora memory & multi-turn history)
-    ai_resp = await ai_chat_core(ChatRequest(message=inst, include_telemetry=True, session_id=device_id or "default"), client_ip=client_ip, session_id=device_id or "default")
-    reply_text = ai_resp.get("reply", "I processed your request.")
-    return record_agent_log(action="ai_inference", reply=reply_text)
+    # 6. Sora Autonomous ReAct Agent Loop (Multi-Step Planning & Dynamic Tool Execution)
+    react_resp = await run_sora_react_loop(prompt=inst, session_id=device_id or "default", client_ip=client_ip)
+    reply_text = react_resp.get("reply", "I processed your request.")
+    steps = react_resp.get("steps", [])
+    action_name = "react_agent" if steps else "ai_inference"
+    return record_agent_log(
+        action=action_name,
+        reply=reply_text,
+        extra_data={"steps": steps, "model": react_resp.get("model")}
+    )
 
 @router.post("/api/v1/agent/dispatch", summary="Universal Server-Side Agent Dispatcher")
 async def dispatch_agent_instruction(req: AgentDispatchRequest, request: Request):
