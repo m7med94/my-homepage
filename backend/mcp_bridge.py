@@ -70,7 +70,7 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
     return [
         {
             "name": "check_server_connection",
-            "description": "Check if Mohammed's central server and ESP32 home hub are connected and healthy, and say a friendly greeting.",
+            "description": "Check if Sora (Mohammed's Server AI agent) and the central server are connected and healthy, and say a friendly greeting from Sora.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -108,7 +108,7 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
                     },
                     "task_id": {
                         "type": "string",
-                        "description": "The task ID (for complete or delete)"
+                        "description": "Task identifier or search keyword (for 'complete' or 'delete')"
                     }
                 },
                 "required": ["action"]
@@ -116,7 +116,7 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
         },
         {
             "name": "ping_network_target",
-            "description": "Ping any local network device, server, gateway, or internet host (e.g. 1.1.1.1, google.com) and return round-trip latency.",
+            "description": "Ping any IP or host (e.g. 1.1.1.1, google.com) to measure network latency and check connectivity.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -157,18 +157,18 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
         },
         {
             "name": "dispatch_server_ai",
-            "description": "Dispatch a complex question, custom plugin calculation, or general query to the server's Gemini AI and plugin registry.",
+            "description": "Ask Sora (Mohammed's Server AI Agent) to perform any task on the server, answer questions, query telemetry or to-dos, and execute server actions.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "instruction": {"type": "string", "description": "The question or instruction to dispatch"}
+                    "instruction": {"type": "string", "description": "The question or instruction for Sora"}
                 },
                 "required": ["instruction"]
             }
         },
         {
             "name": "send_device_alert",
-            "description": "Send an instant visual/spoken notification alert to Mohammed's notification ESP32 display (esp32-2).",
+            "description": "Ask Sora to send an instant visual/spoken notification alert to Mohammed's notification ESP32 display (esp32-2).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -190,7 +190,7 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
     logger.info(f"Executing cloud tool: '{name}' with args: {arguments}")
     
     if name == "check_server_connection":
-        return "Hello Mohammed! The central server hub is online, healthy, and connected to XiaoZhi Cloud via high-speed MCP bridge."
+        return "Hello Mohammed! I am Sora, your personal Server AI Agent. The central server is online, healthy, and all systems are running smoothly."
 
     elif name == "get_server_diagnostics":
         try:
