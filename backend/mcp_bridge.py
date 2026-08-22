@@ -165,6 +165,20 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
                 },
                 "required": ["instruction"]
             }
+        },
+        {
+            "name": "send_device_alert",
+            "description": "Send an instant visual/spoken notification alert to Mohammed's notification ESP32 display or all connected devices.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "The alert message text to display and announce on the ESP32"},
+                    "title": {"type": "string", "description": "Short title or header for the alert"},
+                    "emotion": {"type": "string", "enum": ["happy", "notice", "warning", "confused"], "description": "Alert emotion tone"},
+                    "target_device": {"type": "string", "description": "Target device ID: 'esp32-2' (Notification Node), 'mo-project-c3', or 'all'"}
+                },
+                "required": ["message"]
+            }
         }
     ]
 
@@ -274,6 +288,25 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
             return resp.get("reply") or resp.get("summary") or "Query executed successfully."
         except Exception as e:
             return f"Server AI error: {e}"
+
+    elif name == "send_device_alert":
+        msg = arguments.get("message", "")
+        title = arguments.get("title", "Voice Notice")
+        emotion = arguments.get("emotion", "notice")
+        target_dev = arguments.get("target_device", "all")
+        if not msg:
+            return "Please provide an alert message text."
+        try:
+            from backend.routers.telemetry import push_message_to_device
+            await push_message_to_device(
+                device_id=target_dev,
+                message=msg,
+                status=title,
+                emotion=emotion,
+            )
+            return f"Transmitted notification alert '{msg}' to {target_dev}."
+        except Exception as e:
+            return f"Error transmitting alert to ESP32: {e}"
 
     return f"Tool '{name}' is not recognized."
 

@@ -366,12 +366,20 @@
             <textarea id="alertMsgInput" class="cyber-input" rows="3" placeholder="Enter message to display and speak on ESP32..." required style="width: 100%; border-radius: 8px; resize: none;"></textarea>
           </div>
           <div>
+            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">TARGET HARDWARE DEVICE</label>
+            <select id="alertDeviceSelect" class="cyber-select" style="width: 100%; border-radius: 8px;">
+              <option value="all" selected>All Connected Devices (Broadcast)</option>
+              <option value="esp32-2">esp32-2 (Notification Receiver)</option>
+              <option value="mo-project-c3">mo-project-c3 (XiaoZhi Voice Assistant)</option>
+            </select>
+          </div>
+          <div>
             <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">EMOTION / STATUS</label>
             <select id="alertEmotionSelect" class="cyber-select" style="width: 100%; border-radius: 8px;">
-              <option value="happy">Happy (Gentle Chime)</option>
-              <option value="notice" selected>Notice (Neutral Alert)</option>
-              <option value="warning">Warning (Urgent Beep)</option>
-              <option value="confused">Question (Rising Tone)</option>
+              <option value="happy">Happy (Gentle Chime / Green LED)</option>
+              <option value="notice" selected>Notice (Neutral Alert / Cyan LED)</option>
+              <option value="warning">Warning (Urgent Beep / Amber LED)</option>
+              <option value="confused">Question (Rising Tone / Magenta LED)</option>
             </select>
           </div>
           <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">

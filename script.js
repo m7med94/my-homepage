@@ -1287,6 +1287,7 @@ async function handlePushAlertSubmit(e) {
   const title = (document.getElementById('alertTitleInput')?.value || 'Server Notice').trim();
   const message = (document.getElementById('alertMsgInput')?.value || '').trim();
   const emotion = document.getElementById('alertEmotionSelect')?.value || 'notice';
+  const targetDevice = document.getElementById('alertDeviceSelect')?.value || 'all';
 
   if (!message) return;
 
@@ -1295,7 +1296,7 @@ async function handlePushAlertSubmit(e) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        device_id: 'mo-project-c3',
+        device_id: targetDevice,
         title: title,
         message: message,
         emotion: emotion
@@ -1307,8 +1308,8 @@ async function handlePushAlertSubmit(e) {
 
     closeAlertModal();
     playChime();
-    showToast(`Alert pushed to ESP32: "${message.substring(0, 35)}..."`, 'info');
-    logEvent(`Hardware Alert Transmitted [${emotion}]: "${message}" via ${data.channel || 'WebSocket'}`, 'warn');
+    showToast(`Alert pushed to ${targetDevice}: "${message.substring(0, 35)}..."`, 'info');
+    logEvent(`Hardware Alert Transmitted [${emotion}] to [${targetDevice}]: "${message}"`, 'warn');
   } catch (err) {
     showToast(`Failed to push alert: ${err.message}`, 'danger');
   }

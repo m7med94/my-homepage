@@ -89,18 +89,38 @@ async def push_message_to_device(
     }
 
     ws_success = False
-    ws = connected_device_sockets.get(device_id)
-    if not ws and connected_device_sockets:
-        ws = next(iter(connected_device_sockets.values()))
-
-    if ws:
-        try:
-            await ws.send_text(json.dumps(payload))
-            print(f"[Device WebSocket] Pushed alert to {device_id}: [{status}] {msg_content}")
-            ws_success = True
-        except Exception as e:
-            print(f"[Device WebSocket] Error pushing to {device_id}: {e}")
-            connected_device_sockets.pop(device_id, None)
+    
+    if device_id in ("all", "*", "broadcast") or not device_id:
+        # 1. Broadcast to all active connected ESP32 WebSocket clients
+        for dev, socket in list(connected_device_sockets.items()):
+            try:
+                await socket.send_text(json.dumps(payload))
+                print(f"[Device WebSocket] Broadcast alert to '{dev}': [{status}] {msg_content}")
+                ws_success = True
+            except Exception as e:
+                print(f"[Device WebSocket] Error broadcasting to '{dev}': {e}")
+                connected_device_sockets.pop(dev, None)
+    else:
+        # 2. Push to specific targeted ESP32 device
+        ws = connected_device_sockets.get(device_id)
+        if ws:
+            try:
+                await ws.send_text(json.dumps(payload))
+                print(f"[Device WebSocket] Pushed alert to '{device_id}': [{status}] {msg_content}")
+                ws_success = True
+            except Exception as e:
+                print(f"[Device WebSocket] Error pushing to '{device_id}': {e}")
+                connected_device_sockets.pop(device_id, None)
+        elif connected_device_sockets:
+            # Fallback to any active connected notification socket
+            for dev, socket in list(connected_device_sockets.items()):
+                try:
+                    await socket.send_text(json.dumps(payload))
+                    print(f"[Device WebSocket] Fallback alert to '{dev}': [{status}] {msg_content}")
+                    ws_success = True
+                    break
+                except Exception:
+                    connected_device_sockets.pop(dev, None)
 
     mqtt_success = await asyncio.to_thread(publish_mqtt_alert, device_id, payload)
 
