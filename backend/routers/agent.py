@@ -673,7 +673,19 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
         plugin_result, plugin_name = plugin_res
         return record_agent_log(action="plugin_execution", reply=plugin_result, plugin_name=plugin_name)
 
-    # 2. Sora Long-Term Memory Intents (Remember -> Recall -> Forget)
+    # 2. Compound Multi-Step Directives -> Route directly to Sora ReAct Engine!
+    is_compound = any(conj in lower_inst for conj in [" and ", " then ", " if ", " also ", " after that "]) and len(inst.split()) >= 5
+    if is_compound:
+        react_resp = await run_sora_react_loop(prompt=inst, session_id=device_id or "default", client_ip=client_ip)
+        reply_text = react_resp.get("reply", "I processed your request.")
+        steps = react_resp.get("steps", [])
+        return record_agent_log(
+            action="react_agent" if steps else "ai_inference",
+            reply=reply_text,
+            extra_data={"steps": steps, "model": react_resp.get("model")}
+        )
+
+    # 3. Sora Long-Term Memory Intents (Remember -> Recall -> Forget)
     # A) Remember new fact
     rem_match = re.search(r"(?:remember\s+that\s+|remember\s*:?\s*|learn\s+that\s+|save\s+memory\s*:?\s*)(.+)", lower_inst)
     if rem_match or lower_inst.startswith("remember ") or lower_inst.startswith("sora, remember ") or lower_inst.startswith("sora remember "):
