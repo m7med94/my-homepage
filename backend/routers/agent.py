@@ -520,7 +520,51 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
             reply_msg = "No recent sensor telemetry records found in the database."
         return record_agent_log(action="telemetry_query", reply=reply_msg)
 
-    # 4. General AI Inference (Gemini / AI Model with Sora memory & multi-turn history)
+    # 4. Hardware Notification & Alert Intents (Push directly to esp32-2)
+    notify_triggers = [
+        "send notification", "push notification", "send alert", "push alert",
+        "send a notification", "push an alert", "send an alert", "push a notification",
+        "notify esp32", "alert esp32", "notify device", "alert device",
+        "display on esp32", "show on esp32", "message esp32", "tell esp32",
+        "notify me on esp32", "send to esp32", "send alert to esp32", "send notification to esp32"
+    ]
+    if any(k in lower_inst for k in notify_triggers):
+        clean_msg = re.sub(r"^sora,?\s*", "", inst, flags=re.IGNORECASE).strip()
+        clean_msg = re.sub(
+            r"^(?:please\s+)?(?:send|push|transmit|dispatch|post)\s+(?:a\s+|an\s+)?(?:notification|alert|message)?\s*(?:to\s+(?:the\s+)?(?:esp32(?:-2)?|device|display|screen|receiver|hardware))?\s*:?\s*(?:saying|that|with)?\s*:?\s*",
+            "",
+            clean_msg,
+            flags=re.IGNORECASE
+        ).strip()
+        clean_msg = clean_msg.strip(" \"':“”’‘")
+        if not clean_msg:
+            clean_msg = "Notice from Sora"
+
+        # Determine emotion tone
+        emotion = "happy"
+        if any(w in lower_inst for w in ["warning", "urgent", "danger", "alert", "error", "critical"]):
+            emotion = "warning"
+        elif any(w in lower_inst for w in ["question", "confused", "what", "why"]):
+            emotion = "confused"
+        elif any(w in lower_inst for w in ["notice", "info", "update", "reminder"]):
+            emotion = "notice"
+
+        from backend.routers.telemetry import push_message_to_device
+        pushed = await push_message_to_device(
+            device_id="esp32-2",
+            message=clean_msg,
+            status="Sora Notice",
+            emotion=emotion,
+        )
+        reply_msg = f"I've transmitted the alert to your esp32-2 notification receiver: '{clean_msg}'."
+        record_chat_turn(device_id or "default", "model", reply_msg)
+        return record_agent_log(
+            action="device_notify",
+            reply=reply_msg,
+            extra_data={"message": clean_msg, "device_id": "esp32-2", "emotion": emotion, "pushed": pushed}
+        )
+
+    # 5. General AI Inference (Gemini / AI Model with Sora memory & multi-turn history)
     ai_resp = await ai_chat_core(ChatRequest(message=inst, include_telemetry=True, session_id=device_id or "default"), client_ip=client_ip, session_id=device_id or "default")
     reply_text = ai_resp.get("reply", "I processed your request.")
     return record_agent_log(action="ai_inference", reply=reply_text)
