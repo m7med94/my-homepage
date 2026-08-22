@@ -77,7 +77,7 @@ async def push_message_to_device(
     emotion: str = "happy",
     audio_url: Optional[str] = None,
 ) -> bool:
-    """Instantly pushes a JSON alert packet to the connected ESP32 via WebSocket or MQTT."""
+    """Instantly pushes a JSON alert packet to the connected notification ESP32 via WebSocket or MQTT."""
     msg_content = message or text or ""
     payload = {
         "type": "alert",
@@ -88,41 +88,25 @@ async def push_message_to_device(
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-    ws_success = False
-    
-    if device_id in ("all", "*", "broadcast") or not device_id:
-        # 1. Broadcast to all active connected ESP32 WebSocket clients
-        for dev, socket in list(connected_device_sockets.items()):
-            try:
-                await socket.send_text(json.dumps(payload))
-                print(f"[Device WebSocket] Broadcast alert to '{dev}': [{status}] {msg_content}")
-                ws_success = True
-            except Exception as e:
-                print(f"[Device WebSocket] Error broadcasting to '{dev}': {e}")
-                connected_device_sockets.pop(dev, None)
-    else:
-        # 2. Push to specific targeted ESP32 device
-        ws = connected_device_sockets.get(device_id)
-        if ws:
-            try:
-                await ws.send_text(json.dumps(payload))
-                print(f"[Device WebSocket] Pushed alert to '{device_id}': [{status}] {msg_content}")
-                ws_success = True
-            except Exception as e:
-                print(f"[Device WebSocket] Error pushing to '{device_id}': {e}")
-                connected_device_sockets.pop(device_id, None)
-        elif connected_device_sockets:
-            # Fallback to any active connected notification socket
-            for dev, socket in list(connected_device_sockets.items()):
-                try:
-                    await socket.send_text(json.dumps(payload))
-                    print(f"[Device WebSocket] Fallback alert to '{dev}': [{status}] {msg_content}")
-                    ws_success = True
-                    break
-                except Exception:
-                    connected_device_sockets.pop(dev, None)
+    # mo-project-c3 is the voice assistant and cannot receive notifications; route alerts strictly to esp32-2
+    target_dev = "esp32-2" if (not device_id or device_id in ("mo-project-c3", "all", "*", "broadcast")) else device_id
 
-    mqtt_success = await asyncio.to_thread(publish_mqtt_alert, device_id, payload)
+    ws_success = False
+    ws = connected_device_sockets.get(target_dev)
+    if not ws and connected_device_sockets:
+        # Fallback to any connected esp32-2 or notification socket
+        ws = connected_device_sockets.get("esp32-2") or next(iter(connected_device_sockets.values()))
+
+    if ws:
+        try:
+            await ws.send_text(json.dumps(payload))
+            print(f"[Device WebSocket] Pushed notification alert to '{target_dev}': [{status}] {msg_content}")
+            ws_success = True
+        except Exception as e:
+            print(f"[Device WebSocket] Error pushing to '{target_dev}': {e}")
+            connected_device_sockets.pop(target_dev, None)
+
+    mqtt_success = await asyncio.to_thread(publish_mqtt_alert, target_dev, payload)
 
     return ws_success or mqtt_success
 
@@ -132,7 +116,7 @@ class DevicePayload(BaseModel):
     data: str = Field(..., min_length=1, max_length=4000, description="Raw or formatted telemetry payload string")
 
 class DeviceNotifyPayload(BaseModel):
-    device_id: Optional[str] = Field("mo-project-c3", description="Target device ID or MAC")
+    device_id: Optional[str] = Field("esp32-2", description="Target notification receiver device ID (defaults to esp32-2)")
     title: Optional[str] = Field("Server Notice", description="Alert title or status header")
     status: Optional[str] = Field(None, description="Alias for title")
     message: Optional[str] = Field(None, description="Notification message text")
@@ -277,7 +261,9 @@ async def notify_device(
         )
     
     title = payload.title or payload.status or "Server Notice"
-    dev_id = payload.device_id or "mo-project-c3"
+    dev_id = payload.device_id or "esp32-2"
+    if dev_id == "mo-project-c3":
+        dev_id = "esp32-2"
     emotion = payload.emotion or "happy"
     client_ip = request.client.host if request.client else "unknown"
     entry_id = str(uuid.uuid4())

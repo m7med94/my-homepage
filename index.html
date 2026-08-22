@@ -352,9 +352,9 @@
     <!-- PUSH DEVICE ALERT MODAL -->
     <div class="modal-backdrop" id="alertModal" onclick="if(event.target===this) closeAlertModal()">
       <div class="modal-card">
-        <h3>Push ESP32 Device Alert</h3>
+        <h3>Push ESP32 Notification</h3>
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
-          Transmit custom alert notifications directly to the ESP32 OLED screen and speaker via WebSocket or MQTT fallback.
+          Transmit custom alert notifications directly to your dedicated <b>esp32-2</b> notification display and indicator.
         </p>
         <form id="pushAlertForm" style="display: grid; gap: 14px;">
           <div>
@@ -363,15 +363,11 @@
           </div>
           <div>
             <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">MESSAGE CONTENT</label>
-            <textarea id="alertMsgInput" class="cyber-input" rows="3" placeholder="Enter message to display and speak on ESP32..." required style="width: 100%; border-radius: 8px; resize: none;"></textarea>
+            <textarea id="alertMsgInput" class="cyber-input" rows="3" placeholder="Enter message to display on esp32-2..." required style="width: 100%; border-radius: 8px; resize: none;"></textarea>
           </div>
-          <div>
-            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">TARGET HARDWARE DEVICE</label>
-            <select id="alertDeviceSelect" class="cyber-select" style="width: 100%; border-radius: 8px;">
-              <option value="all" selected>All Connected Devices (Broadcast)</option>
-              <option value="esp32-2">esp32-2 (Notification Receiver)</option>
-              <option value="mo-project-c3">mo-project-c3 (XiaoZhi Voice Assistant)</option>
-            </select>
+          <div style="background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">TARGET RECEIVER:</span>
+            <span class="badge-status online" style="font-size: 11px; font-weight: 600;">esp32-2 (Notification Node)</span>
           </div>
           <div>
             <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">EMOTION / STATUS</label>

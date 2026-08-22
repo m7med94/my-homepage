@@ -168,14 +168,13 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
         },
         {
             "name": "send_device_alert",
-            "description": "Send an instant visual/spoken notification alert to Mohammed's notification ESP32 display or all connected devices.",
+            "description": "Send an instant visual/spoken notification alert to Mohammed's notification ESP32 display (esp32-2).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "message": {"type": "string", "description": "The alert message text to display and announce on the ESP32"},
+                    "message": {"type": "string", "description": "The alert message text to display and announce on the notification ESP32"},
                     "title": {"type": "string", "description": "Short title or header for the alert"},
-                    "emotion": {"type": "string", "enum": ["happy", "notice", "warning", "confused"], "description": "Alert emotion tone"},
-                    "target_device": {"type": "string", "description": "Target device ID: 'esp32-2' (Notification Node), 'mo-project-c3', or 'all'"}
+                    "emotion": {"type": "string", "enum": ["happy", "notice", "warning", "confused"], "description": "Alert emotion tone"}
                 },
                 "required": ["message"]
             }
@@ -293,18 +292,17 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
         msg = arguments.get("message", "")
         title = arguments.get("title", "Voice Notice")
         emotion = arguments.get("emotion", "notice")
-        target_dev = arguments.get("target_device", "all")
         if not msg:
             return "Please provide an alert message text."
         try:
             from backend.routers.telemetry import push_message_to_device
             await push_message_to_device(
-                device_id=target_dev,
+                device_id="esp32-2",
                 message=msg,
                 status=title,
                 emotion=emotion,
             )
-            return f"Transmitted notification alert '{msg}' to {target_dev}."
+            return f"Transmitted notification alert '{msg}' to esp32-2 notification receiver."
         except Exception as e:
             return f"Error transmitting alert to ESP32: {e}"
 
