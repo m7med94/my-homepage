@@ -99,6 +99,7 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sora_turns_session ON sora_chat_turns (session_id, created_at);")
 
         # Seed default memories for Sora if empty
+        cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM sora_memory")
         if cur.fetchone()[0] == 0:
             default_memories = [
