@@ -94,8 +94,8 @@ def get_mcp_tools_list() -> List[Dict[str, Any]]:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["list", "add", "complete", "delete"],
-                        "description": "The action to perform on the to-do list"
+                        "enum": ["list", "add", "complete", "delete", "push_to_device"],
+                        "description": "The action: 'list', 'add', 'complete', 'delete', or 'push_to_device' to transmit pending tasks to the esp32-2 notification screen"
                     },
                     "text": {
                         "type": "string",
@@ -252,8 +252,25 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
                     conn.execute("UPDATE todos SET completed = 1 WHERE id = ? OR text LIKE ?", (task_id, f"%{task_id}%"))
                     return f"Marked task '{task_id}' as completed."
                 else:
-                    conn.execute("DELETE FROM todos WHERE id = ? OR text LIKE ?", (task_id, f"%{task_id}%"))
+                    conn.execute("DELETE FROM todos WHERE id = ?", (task_id,))
                     return f"Deleted task '{task_id}' from your list."
+
+        elif action in ["push_to_device", "send_to_esp32", "notify"]:
+            with sqlite3.connect(DB_PATH, timeout=5.0) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("SELECT text, priority FROM todos WHERE completed = 0 ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at DESC").fetchall()
+            if not rows:
+                return "Your to-do list is currently empty, so there are no tasks to send."
+            items = " | ".join([f"{i+1}. {r['text']}" for i, r in enumerate(rows)])
+            alert_text = f"Tasks ({len(rows)}): {items}"
+            from backend.routers.telemetry import push_message_to_device
+            await push_message_to_device(
+                device_id="esp32-2",
+                message=alert_text,
+                status="Pending Tasks",
+                emotion="notice",
+            )
+            return f"Transmitted your {len(rows)} pending task(s) directly to the esp32-2 notification screen: '{items}'."
         return "Unknown to-do action."
 
     elif name == "ping_network_target":

@@ -397,7 +397,40 @@ async def process_agent_instruction_core(instruction: str, device_id: str = "mo-
         record_chat_turn(device_id or "default", "model", reply_msg)
         return record_agent_log(action="memory_forget", reply=reply_msg)
 
-    # 3. Hardware Notification & Alert Intents (Push directly to esp32-2)
+    # 3. Task Notification Push (Send To-Do List to esp32-2 Notification Receiver)
+    if any(k in lower_inst for k in [
+        "send my todo", "send my to-do", "send my tasks", "send my list",
+        "push my todo", "push my to-do", "push my tasks", "push my list",
+        "send todo to esp32", "send tasks to esp32", "send to-do to esp32", "send todos to esp32",
+        "show todo on esp32", "show tasks on esp32", "display todo on esp32", "display tasks on esp32",
+        "send todo list to esp32", "send task list to esp32", "notify my tasks", "notify my todo",
+        "send my to do list to the esp32", "send my todo list to the esp32", "send to do list to esp32"
+    ]):
+        with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT text, priority FROM todos WHERE completed = 0 ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at DESC").fetchall()
+        if rows:
+            formatted_tasks = " | ".join([f"{i+1}. {r['text']}" for i, r in enumerate(rows)])
+            alert_text = f"Tasks ({len(rows)}): {formatted_tasks}"
+            from backend.routers.telemetry import push_message_to_device
+            pushed = await push_message_to_device(
+                device_id="esp32-2",
+                message=alert_text,
+                status="Pending Tasks",
+                emotion="notice",
+            )
+            reply_msg = f"I've transmitted your {len(rows)} pending task{'s' if len(rows) > 1 else ''} directly to your esp32-2 notification screen: '{formatted_tasks}'."
+        else:
+            reply_msg = "You have no pending tasks on your to-do list to send."
+
+        record_chat_turn(device_id or "default", "model", reply_msg)
+        return record_agent_log(
+            action="todo_push_to_device",
+            reply=reply_msg,
+            extra_data={"count": len(rows) if rows else 0, "device_id": "esp32-2", "pushed": pushed if rows else False}
+        )
+
+    # 4. Hardware Notification & Alert Intents (Push directly to esp32-2)
     notify_triggers = [
         "send notification", "push notification", "send alert", "push alert",
         "send a notification", "push an alert", "send an alert", "push a notification",
