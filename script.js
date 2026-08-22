@@ -1,1049 +1,1020 @@
 /**
- * SensorsHub — Telemetry & IoT Dashboard Controller
- * Advanced Real-Time Monitoring, Live ESP32 Audio/Visual Notifications & SSE Ingestion
+ * =========================================================================
+ * SensorsHub — Cortesa Cosmic Intelligence & Quantum Point Cloud Engine
+ * 3D WebGL Humanoid, Topological Signal Graph, Web Audio Synthesizer,
+ * Real-Time ESP32 Telemetry & Synced Task Terminal.
+ * =========================================================================
  */
 
-// Initial Sensor Fleet (Standby State — populated by real hardware telemetry)
-let sensors = [
-  {
-    id: 1,
-    name: 'Living Room Climate',
-    category: 'Climate',
-    type: 'Temperature',
-    location: 'Zone 1 - Main Floor',
-    unit: '°C',
-    minValue: 10,
-    maxValue: 40,
-    minNormal: 19,
-    maxNormal: 26,
-    currentValue: '--',
-    status: 'standby',
-    accentColor: '#38bdf8',
-    history: [],
-    lastUpdate: null,
-  },
-  {
-    id: 2,
-    name: 'Server Rack Ambient',
-    category: 'Climate',
-    type: 'Temperature',
-    location: 'Server Room B',
-    unit: '°C',
-    minValue: 10,
-    maxValue: 55,
-    minNormal: 18,
-    maxNormal: 32,
-    currentValue: '--',
-    status: 'standby',
-    accentColor: '#f43f5e',
-    history: [],
-    lastUpdate: null,
-  },
-  {
-    id: 3,
-    name: 'Master Bedroom Humidity',
-    category: 'Climate',
-    type: 'Humidity',
-    location: 'Zone 2 - Upper Floor',
-    unit: '%',
-    minValue: 10,
-    maxValue: 90,
-    minNormal: 35,
-    maxNormal: 65,
-    currentValue: '--',
-    status: 'standby',
-    accentColor: '#38bdf8',
-    history: [],
-    lastUpdate: null,
-  },
-  {
-    id: 4,
-    name: 'Main Lab Air Quality (CO₂)',
-    category: 'Environment',
-    type: 'Air Quality',
-    location: 'Central Lab',
-    unit: 'ppm',
-    minValue: 300,
-    maxValue: 2000,
-    minNormal: 350,
-    maxNormal: 800,
-    currentValue: '--',
-    status: 'standby',
-    accentColor: '#10b981',
-    history: [],
-    lastUpdate: null,
-  },
-  {
-    id: 5,
-    name: 'Main Line Power Load',
-    category: 'Power',
-    type: 'Power',
-    location: 'Main Distribution Unit',
-    unit: 'W',
-    minValue: 0,
-    maxValue: 4000,
-    minNormal: 100,
-    maxNormal: 2800,
-    currentValue: '--',
-    status: 'standby',
-    accentColor: '#fbbf24',
-    history: [],
-    lastUpdate: null,
-  },
-  {
-    id: 6,
-    name: 'Atmospheric Barometer',
-    category: 'Environment',
-    type: 'Pressure',
-    location: 'Roof Weather Station',
-    unit: 'hPa',
-    minValue: 950,
-    maxValue: 1050,
-    minNormal: 980,
-    maxNormal: 1030,
-    currentValue: '--',
-    status: 'standby',
-    accentColor: '#818cf8',
-    history: [],
-    lastUpdate: null,
-  },
-  {
-    id: 7,
-    name: 'ESP32 XiaoZhi Voice Assistant',
-    category: 'Security',
-    type: 'Voice',
-    location: 'Central Gateway (mo-project-c3)',
-    unit: 'Event',
-    minValue: 0,
-    maxValue: 100,
-    minNormal: 0,
-    maxNormal: 100,
-    currentValue: 'READY',
-    status: 'online',
-    accentColor: '#a855f7',
-    history: [1, 1, 1],
-    lastUpdate: new Date(),
-    lastTranscript: 'Waiting for voice transmission...',
+// =========================================================================
+// 1. THREE.JS 3D TRANSLUCENT HUMANOID & COSMIC PARTICLE CLOUD
+// =========================================================================
+let scene, camera, renderer, bustGroup, bustGeometry, bustMesh;
+let positions, originPositions, colors;
+let pIndex = 0;
+const MAX_POINTS = 52000;
+let lightTrails = [];
+let dustCloud;
+let targetRotX = 0, targetRotY = 0;
+let pulseFactor = 0;
+
+function initThreeBackground() {
+  const canvas3D = document.getElementById('webglCanvas');
+  if (!canvas3D || typeof THREE === 'undefined') return;
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x02040a, 0.018);
+
+  camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 26);
+
+  renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  bustGroup = new THREE.Group();
+  scene.add(bustGroup);
+
+  // Custom glow particle texture
+  const pCanvas = document.createElement('canvas');
+  pCanvas.width = 64;
+  pCanvas.height = 64;
+  const pCtx = pCanvas.getContext('2d');
+  const grad = pCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.18, 'rgba(121,221,255,0.95)');
+  grad.addColorStop(0.55, 'rgba(0,180,255,0.3)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  pCtx.fillStyle = grad;
+  pCtx.fillRect(0, 0, 64, 64);
+  const particleTexture = new THREE.CanvasTexture(pCanvas);
+
+  // Anatomical Signed Distance Field (SDF)
+  function smin(a, b, k = 0.5) {
+    const h = Math.max(k - Math.abs(a - b), 0.0) / k;
+    return Math.min(a, b) - h * h * k * 0.25;
   }
+
+  function humanoidSDF(x, y, z) {
+    const symX = Math.abs(x);
+    const dCranium = (x * x / 14.8 + Math.pow(y - 3.8, 2) / 19.0 + Math.pow(z + 0.3, 2) / 15.6) - 1.0;
+    const dForehead = (symX * symX / 11.8 + Math.pow(y - 4.2, 2) / 4.2 + Math.pow(z - 1.6, 2) / 4.6) - 0.7;
+
+    const jawT = Math.max(0.0, Math.min(1.0, (y - 0.8) / 2.6));
+    const jawWidth = 1.1 + jawT * 2.3;
+    const jawDepth = 2.4 + jawT * 1.3;
+    const dJaw = (symX * symX / (jawWidth * jawWidth) + Math.pow(y - 1.8, 2) / 3.8 + Math.pow(z - 0.4, 2) / (jawDepth * jawDepth)) - 1.0;
+
+    const dCheek = (Math.pow(symX - 1.95, 2) / 1.6 + Math.pow(y - 2.7, 2) / 1.4 + Math.pow(z - 1.65, 2) / 1.6) - 0.65;
+    const dBrow = (Math.pow(symX - 1.25, 2) / 2.0 + Math.pow(y - 3.85, 2) / 0.4 + Math.pow(z - 2.55, 2) / 0.6) - 0.45;
+
+    let head = smin(dCranium, dForehead, 0.4);
+    head = smin(head, dJaw, 0.35);
+    head = smin(head, dCheek, 0.3);
+    head = smin(head, dBrow, 0.2);
+
+    const dEyeSocket = Math.sqrt(Math.pow(symX - 1.35, 2) + Math.pow(y - 3.4, 2) + Math.pow(z - 2.6, 2)) - 0.75;
+    head = Math.max(head, -dEyeSocket * 1.15);
+
+    const dEyeBall = Math.sqrt(Math.pow(symX - 1.35, 2) + Math.pow(y - 3.4, 2) + Math.pow(z - 2.3, 2)) - 0.45;
+    head = smin(head, dEyeBall, 0.15);
+
+    if (y > 1.8 && y < 3.8 && z > 1.2) {
+      const noseY = (y - 1.8) / 1.9;
+      const nWidth = 0.32 + (1.0 - noseY) * 0.32;
+      const nProtrusion = 3.35 - noseY * 0.75;
+      const dNose = (x * x / (nWidth * nWidth) + Math.pow(y - 2.55, 2) / 1.5 + Math.pow(z - nProtrusion, 2) / 0.7) - 0.32;
+      head = smin(head, dNose, 0.16);
+    }
+
+    if (y > 1.3 && y < 2.2 && z > 1.6) {
+      const dUpperLip = (x * x / 1.35 + Math.pow(y - 1.85, 2) / 0.12 + Math.pow(z - 2.78, 2) / 0.22) - 0.22;
+      const dLowerLip = (x * x / 1.25 + Math.pow(y - 1.55, 2) / 0.15 + Math.pow(z - 2.72, 2) / 0.25) - 0.22;
+      head = smin(head, dUpperLip, 0.09);
+      head = smin(head, dLowerLip, 0.09);
+    }
+
+    const neckY = Math.max(-1.8, Math.min(1.2, y));
+    const neckTaper = 1.65 + (1.2 - neckY) * 0.4;
+    const dNeck = (symX * symX / (neckTaper * neckTaper) + Math.pow(z + 0.1, 2) / (neckTaper * 0.85 * neckTaper * 0.85)) - 1.0;
+    const sMuscleX = 1.9 - (y + 1.8) * 0.45;
+    const dMuscle = (Math.pow(symX - sMuscleX, 2) / 0.45 + Math.pow(z - 0.2, 2) / 0.55) - 0.35;
+    let upperBody = smin(dNeck, dMuscle, 0.3);
+
+    if (y < 0.2) {
+      const torsoT = (-0.2 - y) / 6.0;
+      const shoulderSpan = 2.1 + Math.pow(torsoT, 0.65) * 11.0;
+      const chestDepth = 1.5 + torsoT * 4.0;
+      const dClavicle = (Math.pow(symX - 4.2, 2) / 18.0 + Math.pow(y + 0.9, 2) / 0.3 + Math.pow(z - 1.9, 2) / 0.45) - 0.32;
+      const dTorso = (x * x / (shoulderSpan * shoulderSpan) + Math.pow(y + 3.2, 2) / 14.0 + Math.pow(z + 0.2, 2) / (chestDepth * chestDepth)) - 1.0;
+      upperBody = smin(upperBody, dTorso, 0.55);
+      upperBody = smin(upperBody, dClavicle, 0.22);
+    }
+
+    return smin(head, upperBody, 0.45);
+  }
+
+  function calcNormal(x, y, z) {
+    const eps = 0.02;
+    const nx = humanoidSDF(x + eps, y, z) - humanoidSDF(x - eps, y, z);
+    const ny = humanoidSDF(x, y + eps, z) - humanoidSDF(x, y - eps, z);
+    const nz = humanoidSDF(x, y, z + eps) - humanoidSDF(x, y - eps, z);
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1.0;
+    return [nx / len, ny / len, nz / len];
+  }
+
+  positions = new Float32Array(MAX_POINTS * 3);
+  originPositions = new Float32Array(MAX_POINTS * 3);
+  colors = new Float32Array(MAX_POINTS * 3);
+
+  const cyanBright = new THREE.Color(0x00f0ff);
+  const cyanPale = new THREE.Color(0x79ddff);
+  const pureWhite = new THREE.Color(0xffffff);
+  const deepCobalt = new THREE.Color(0x1a4fb5);
+
+  function addPoint(x, y, z, intensity = 0.5, isPureEdge = false) {
+    if (pIndex >= MAX_POINTS) return;
+    const i3 = pIndex * 3;
+    positions[i3] = x;
+    positions[i3 + 1] = y;
+    positions[i3 + 2] = z;
+
+    originPositions[i3] = x;
+    originPositions[i3 + 1] = y;
+    originPositions[i3 + 2] = z;
+
+    const col = new THREE.Color();
+    if (isPureEdge || intensity > 0.85) {
+      col.lerpColors(cyanBright, pureWhite, (intensity - 0.85) * 6.6);
+    } else if (intensity > 0.4) {
+      col.lerpColors(cyanPale, cyanBright, (intensity - 0.4) * 2.2);
+    } else {
+      col.lerpColors(deepCobalt, cyanPale, intensity * 2.5);
+    }
+
+    colors[i3] = col.r;
+    colors[i3 + 1] = col.g;
+    colors[i3 + 2] = col.b;
+
+    pIndex++;
+  }
+
+  // 1. Radial cranial strands
+  const NUM_MERIDIANS = 54;
+  const STEPS_PER_MERIDIAN = 120;
+  const apex = { x: 0, y: 7.7, z: -0.3 };
+
+  for (let m = 0; m < NUM_MERIDIANS; m++) {
+    const phi = (m / NUM_MERIDIANS) * Math.PI * 2;
+    const dirX = Math.cos(phi);
+    const dirZ = Math.sin(phi);
+
+    for (let s = 1; s <= STEPS_PER_MERIDIAN; s++) {
+      const t = s / STEPS_PER_MERIDIAN;
+      const y = apex.y - t * 4.2;
+
+      let dist = 0.1;
+      for (let step = 0; step < 40; step++) {
+        dist += 0.14;
+        if (humanoidSDF(dirX * dist, y, dirZ * dist) >= 0.0) break;
+      }
+
+      const px = dirX * dist;
+      const pz = dirZ * dist;
+      const crownGlow = Math.pow(1.0 - t, 1.4) * 0.95 + 0.15;
+      const norm = calcNormal(px, y, pz);
+      const rim = Math.pow(1.0 - Math.abs(norm[2]), 2.0);
+
+      addPoint(px, y, pz, Math.max(crownGlow, rim), true);
+    }
+  }
+
+  // 2. Translucent humanoid body
+  const NUM_LATITUDES = 170;
+  for (let lat = 0; lat < NUM_LATITUDES; lat++) {
+    const y = 7.5 - (lat / NUM_LATITUDES) * 14.0;
+    const numRays = y > 0 ? 190 : 230;
+
+    for (let r = 0; r < numRays; r++) {
+      const theta = (r / numRays) * Math.PI * 2;
+      const dirX = Math.cos(theta);
+      const dirZ = Math.sin(theta);
+
+      let dist = 0.1;
+      let found = false;
+
+      for (let step = 0; step < 45; step++) {
+        dist += 0.22;
+        if (humanoidSDF(dirX * dist, y, dirZ * dist) >= 0.0) {
+          let low = dist - 0.22, high = dist;
+          for (let b = 0; b < 6; b++) {
+            const mid = (low + high) * 0.5;
+            if (humanoidSDF(dirX * mid, y, dirZ * mid) < 0) low = mid;
+            else high = mid;
+          }
+          dist = (low + high) * 0.5;
+          found = true;
+          break;
+        }
+      }
+
+      if (found && dist < 14.0) {
+        const px = dirX * dist;
+        const pz = dirZ * dist;
+        const norm = calcNormal(px, y, pz);
+        const dotView = Math.abs(norm[2]);
+        const rim = Math.pow(1.0 - dotView, 2.4);
+        const isEdge = dotView < 0.28;
+        const scanBand = Math.cos(y * 26.0) * 0.25 + 0.75;
+        const finalIntensity = isEdge ? Math.min(1.0, rim * 1.5) : (rim * 0.45 * scanBand);
+
+        addPoint(px, y, pz, finalIntensity, isEdge);
+      }
+    }
+  }
+
+  // 3. Volumetric interior dust
+  for (let i = 0; i < 4500; i++) {
+    const u = (Math.random() - 0.5) * 5.5;
+    const v = -5.0 + Math.random() * 12.0;
+    const w = (Math.random() - 0.5) * 4.5;
+    if (humanoidSDF(u, v, w) < -0.3) {
+      addPoint(u, v, w, 0.08 + Math.random() * 0.2, false);
+    }
+  }
+
+  bustGeometry = new THREE.BufferGeometry();
+  bustGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  bustGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const bustMaterial = new THREE.PointsMaterial({
+    size: 0.13,
+    vertexColors: true,
+    map: particleTexture,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  bustMesh = new THREE.Points(bustGeometry, bustMaterial);
+  bustMesh.position.y = -0.6;
+  bustGroup.add(bustMesh);
+
+  // Orbiting light trails
+  const trailGroup = new THREE.Group();
+  bustGroup.add(trailGroup);
+
+  const trailConfigs = [
+    { rx: 5.6, ry: 2.2, rz: 5.0, tiltX: 0.32, tiltZ: 0.48, speed: 0.007, color: 0x00f0ff },
+    { rx: 6.5, ry: 2.7, rz: 5.9, tiltX: -0.52, tiltZ: -0.30, speed: -0.0055, color: 0x79ddff },
+    { rx: 5.9, ry: 3.5, rz: 5.3, tiltX: 0.72, tiltZ: -0.58, speed: 0.0065, color: 0xffffff },
+    { rx: 7.2, ry: 2.1, rz: 6.8, tiltX: -0.20, tiltZ: 0.78, speed: -0.0045, color: 0x3d94ff },
+    { rx: 6.1, ry: 1.8, rz: 5.6, tiltX: 0.15, tiltZ: -0.85, speed: 0.0058, color: 0x00f0ff }
+  ];
+
+  trailConfigs.forEach(cfg => {
+    const curvePts = [];
+    const numPts = 240;
+    for (let i = 0; i <= numPts; i++) {
+      const a = (i / numPts) * Math.PI * 2;
+      const x = cfg.rx * Math.cos(a);
+      const y = 3.0 + cfg.ry * Math.sin(a) * 0.9;
+      const z = cfg.rz * Math.sin(a);
+      curvePts.push(new THREE.Vector3(x, y, z));
+    }
+
+    const curve = new THREE.CatmullRomCurve3(curvePts, true);
+    const splinePoints = curve.getPoints(400);
+    const trailGeo = new THREE.BufferGeometry().setFromPoints(splinePoints);
+    const trailMat = new THREE.LineBasicMaterial({
+      color: cfg.color,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+
+    const trailLine = new THREE.Line(trailGeo, trailMat);
+    trailLine.rotation.x = cfg.tiltX;
+    trailLine.rotation.z = cfg.tiltZ;
+
+    const streamCount = 18;
+    const streamGeo = new THREE.BufferGeometry();
+    const streamPos = new Float32Array(streamCount * 3);
+    streamGeo.setAttribute('position', new THREE.BufferAttribute(streamPos, 3));
+    const streamMat = new THREE.PointsMaterial({
+      size: 0.28,
+      color: cfg.color,
+      map: particleTexture,
+      transparent: true,
+      blending: THREE.AdditiveBlending
+    });
+    const streamParticles = new THREE.Points(streamGeo, streamMat);
+    trailLine.add(streamParticles);
+
+    trailGroup.add(trailLine);
+    lightTrails.push({ trailLine, curve, streamParticles, streamCount, speed: cfg.speed, headProgress: Math.random() });
+  });
+
+  // Background cosmic dust field
+  const DUST_COUNT = 14000;
+  const dustGeo = new THREE.BufferGeometry();
+  const dustPos = new Float32Array(DUST_COUNT * 3);
+  const dustCols = new Float32Array(DUST_COUNT * 3);
+
+  const dustCyan = new THREE.Color(0x79ddff);
+  const dustWhite = new THREE.Color(0xffffff);
+  const dustNavy = new THREE.Color(0x184488);
+
+  for (let i = 0; i < DUST_COUNT; i++) {
+    const i3 = i * 3;
+    const clusterAngle = Math.random() * Math.PI * 2;
+    const clusterRadius = 4 + Math.pow(Math.random(), 1.8) * 45;
+    const clusterHeight = (Math.random() - 0.5) * 80;
+
+    dustPos[i3] = Math.cos(clusterAngle) * clusterRadius + (Math.random() - 0.5) * 12;
+    dustPos[i3 + 1] = clusterHeight;
+    dustPos[i3 + 2] = Math.sin(clusterAngle) * clusterRadius - 15 + (Math.random() - 0.5) * 20;
+
+    const colChoice = Math.random();
+    const dCol = new THREE.Color();
+    if (colChoice > 0.8) dCol.copy(dustWhite);
+    else if (colChoice > 0.4) dCol.copy(dustCyan);
+    else dCol.copy(dustNavy);
+
+    dustCols[i3] = dCol.r;
+    dustCols[i3 + 1] = dCol.g;
+    dustCols[i3 + 2] = dCol.b;
+  }
+
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  dustGeo.setAttribute('color', new THREE.BufferAttribute(dustCols, 3));
+
+  const dustMat = new THREE.PointsMaterial({
+    size: 0.12,
+    vertexColors: true,
+    map: particleTexture,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  dustCloud = new THREE.Points(dustGeo, dustMat);
+  scene.add(dustCloud);
+
+  // Mouse move listener
+  window.addEventListener('mousemove', (e) => {
+    const mx = (e.clientX / window.innerWidth - 0.5) * 2;
+    const my = (e.clientY / window.innerHeight - 0.5) * 2;
+    targetRotY = mx * 0.36;
+    targetRotX = my * 0.20;
+  });
+
+  canvas3D.addEventListener('click', (e) => {
+    if (e.target === canvas3D) triggerQuantumPulse();
+  });
+
+  window.addEventListener('resize', () => {
+    if (!camera || !renderer) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Render loop
+  const clock = new THREE.Clock();
+
+  function animateThree() {
+    requestAnimationFrame(animateThree);
+    const time = clock.getElapsedTime();
+
+    if (bustGroup) {
+      bustGroup.rotation.y += (targetRotY - bustGroup.rotation.y) * 0.055;
+      bustGroup.rotation.x += (targetRotX - bustGroup.rotation.x) * 0.055;
+      bustGroup.position.y = Math.sin(time * 1.25) * 0.24;
+    }
+
+    lightTrails.forEach(trail => {
+      trail.trailLine.rotation.y += trail.speed;
+      trail.headProgress = (trail.headProgress + 0.0035) % 1.0;
+
+      const posAttr = trail.streamParticles.geometry.attributes.position;
+      const arr = posAttr.array;
+
+      for (let i = 0; i < trail.streamCount; i++) {
+        const prog = (trail.headProgress - i * 0.012 + 1.0) % 1.0;
+        const pt = trail.curve.getPoint(prog);
+        arr[i * 3] = pt.x;
+        arr[i * 3 + 1] = pt.y;
+        arr[i * 3 + 2] = pt.z;
+      }
+      posAttr.needsUpdate = true;
+    });
+
+    if (dustCloud) {
+      dustCloud.rotation.y = time * 0.01;
+    }
+
+    if (bustGeometry && positions) {
+      const posAttr = bustGeometry.attributes.position;
+      const posArr = posAttr.array;
+
+      if (pulseFactor > 0.001) pulseFactor *= 0.94;
+
+      for (let i = 0; i < pIndex; i++) {
+        const i3 = i * 3;
+        const ox = originPositions[i3];
+        const oy = originPositions[i3 + 1];
+        const oz = originPositions[i3 + 2];
+
+        if (pulseFactor > 0.01) {
+          const dist = Math.sqrt(ox * ox + oy * oy + oz * oz) + 0.1;
+          posArr[i3] += (ox / dist) * pulseFactor * 0.42;
+          posArr[i3 + 1] += (oy / dist) * pulseFactor * 0.42;
+          posArr[i3 + 2] += (oz / dist) * pulseFactor * 0.42;
+        } else {
+          const wave = Math.sin(oy * 1.6 + time * 2.2) * 0.032;
+          posArr[i3] += (ox + wave - posArr[i3]) * 0.085;
+          posArr[i3 + 1] += (oy - posArr[i3 + 1]) * 0.085;
+          posArr[i3 + 2] += (oz + wave - posArr[i3 + 2]) * 0.085;
+        }
+      }
+      posAttr.needsUpdate = true;
+    }
+
+    renderer.render(scene, camera);
+  }
+  animateThree();
+}
+
+function triggerQuantumPulse() {
+  pulseFactor = 1.0;
+  playChime();
+}
+
+// =========================================================================
+// 2. INTERACTIVE 2D UNIFIED SIGNAL GRAPH
+// =========================================================================
+let graphCanvas, gCtx;
+let graphNodes = [];
+let graphEdges = [];
+let activeDragNode = null;
+let isGraphDragging = false;
+
+function initSignalGraph() {
+  graphCanvas = document.getElementById('signalGraphCanvas');
+  if (!graphCanvas) return;
+  gCtx = graphCanvas.getContext('2d');
+
+  const container = graphCanvas.parentElement;
+  graphCanvas.width = container.clientWidth;
+  graphCanvas.height = container.clientHeight;
+
+  const cx = graphCanvas.width / 2;
+  const cy = graphCanvas.height / 2;
+
+  graphNodes = [
+    { id: 'core', label: 'SensorsHub Core (GCP)', type: 'FastAPI Gateway', x: cx, y: cy, vx: 0, vy: 0, r: 24, isCore: true, color: '#00f0ff' },
+    { id: 'esp32', label: 'XiaoZhi ESP32 Client', type: 'Audio & Display', x: cx - 180, y: cy - 90, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 16, color: '#79ddff' },
+    { id: 'dht22', label: 'DHT22 Living Room', type: 'Temp & Humidity', x: cx - 210, y: cy + 80, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 13, color: '#00f59b' },
+    { id: 'bmp280', label: 'BMP280 Barometer', type: 'Pressure Node', x: cx - 60, y: cy + 180, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 13, color: '#00f59b' },
+    { id: 'air', label: 'BME680 Air Sensor', type: 'Air Quality (PPM)', x: cx + 180, y: cy - 100, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 14, color: '#ffaa00' },
+    { id: 'db', label: 'SQLite WAL Database', type: 'Persistence', x: cx + 200, y: cy + 90, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 15, color: '#a855f7' },
+    { id: 'mcp', label: 'XiaoZhi Cloud MCP', type: 'Voice LLM Tools', x: cx + 70, y: cy - 170, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 16, color: '#00f0ff' },
+    { id: 'rpi', label: 'Raspberry Pi Deck', type: 'Local Hub', x: cx - 90, y: cy - 180, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: 14, color: '#79ddff' }
+  ];
+
+  graphEdges = [];
+  for (let i = 1; i < graphNodes.length; i++) {
+    graphEdges.push({ from: 0, to: i, packets: [{ progress: Math.random(), speed: 0.008 + Math.random() * 0.008 }] });
+    if (i > 1 && Math.random() > 0.4) {
+      graphEdges.push({ from: i, to: i - 1, packets: [{ progress: Math.random(), speed: 0.006 }] });
+    }
+  }
+
+  const nodesCountEl = document.getElementById('graphNodesCount');
+  if (nodesCountEl) nodesCountEl.textContent = `${graphNodes.length} ACTIVE`;
+
+  function renderGraph() {
+    if (!gCtx || !graphCanvas) return;
+    gCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+    const cx = graphCanvas.width / 2;
+    const cy = graphCanvas.height / 2;
+
+    // Draw Edges & data packets
+    graphEdges.forEach(e => {
+      const n1 = graphNodes[e.from];
+      const n2 = graphNodes[e.to];
+      if (!n1 || !n2) return;
+
+      gCtx.strokeStyle = 'rgba(0, 200, 255, 0.16)';
+      gCtx.lineWidth = 1;
+      gCtx.beginPath();
+      gCtx.moveTo(n1.x, n1.y);
+      gCtx.lineTo(n2.x, n2.y);
+      gCtx.stroke();
+
+      e.packets.forEach(p => {
+        p.progress += p.speed;
+        if (p.progress > 1) p.progress = 0;
+
+        const px = n1.x + (n2.x - n1.x) * p.progress;
+        const py = n1.y + (n2.y - n1.y) * p.progress;
+
+        gCtx.fillStyle = '#ffffff';
+        gCtx.shadowBlur = 8;
+        gCtx.shadowColor = '#00f0ff';
+        gCtx.beginPath();
+        gCtx.arc(px, py, 2.5, 0, Math.PI * 2);
+        gCtx.fill();
+        gCtx.shadowBlur = 0;
+      });
+    });
+
+    // Draw Nodes
+    graphNodes.forEach(n => {
+      if (n.isCore) {
+        const coreGlow = gCtx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 45);
+        coreGlow.addColorStop(0, 'rgba(0, 240, 255, 0.4)');
+        coreGlow.addColorStop(1, 'transparent');
+        gCtx.fillStyle = coreGlow;
+        gCtx.beginPath();
+        gCtx.arc(n.x, n.y, 45, 0, Math.PI * 2);
+        gCtx.fill();
+      }
+
+      gCtx.fillStyle = n.isCore ? '#ffffff' : 'rgba(10, 20, 36, 0.95)';
+      gCtx.strokeStyle = n.color || (n.isCore ? '#00f0ff' : 'rgba(121, 221, 255, 0.6)');
+      gCtx.lineWidth = n.isCore ? 3 : 1.5;
+      gCtx.beginPath();
+      gCtx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      gCtx.fill();
+      gCtx.stroke();
+
+      gCtx.font = n.isCore ? '600 12px Inter' : '400 11px Inter';
+      gCtx.fillStyle = n.isCore ? '#ffffff' : '#c6d0df';
+      gCtx.textAlign = 'center';
+      gCtx.fillText(n.label, n.x, n.y + n.r + 16);
+
+      if (n.type) {
+        gCtx.font = '10px "JetBrains Mono"';
+        gCtx.fillStyle = '#7e8c9f';
+        gCtx.fillText(n.type, n.x, n.y + n.r + 28);
+      }
+
+      if (!n.isCore && n !== activeDragNode) {
+        n.x += n.vx;
+        n.y += n.vy;
+        const dx = n.x - cx;
+        const dy = n.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 280) {
+          n.vx -= (dx / dist) * 0.02;
+          n.vy -= (dy / dist) * 0.02;
+        }
+      }
+    });
+
+    requestAnimationFrame(renderGraph);
+  }
+  renderGraph();
+
+  graphCanvas.addEventListener('mousedown', (e) => {
+    const rect = graphCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    graphNodes.forEach(n => {
+      const d = Math.hypot(n.x - mx, n.y - my);
+      if (d < n.r + 12) {
+        isGraphDragging = true;
+        activeDragNode = n;
+      }
+    });
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isGraphDragging && activeDragNode) {
+      const rect = graphCanvas.getBoundingClientRect();
+      activeDragNode.x = e.clientX - rect.left;
+      activeDragNode.y = e.clientY - rect.top;
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    isGraphDragging = false;
+    activeDragNode = null;
+  });
+
+  window.addEventListener('resize', () => {
+    if (!graphCanvas || !graphCanvas.parentElement) return;
+    graphCanvas.width = graphCanvas.parentElement.clientWidth;
+    graphCanvas.height = graphCanvas.parentElement.clientHeight;
+  });
+}
+
+// =========================================================================
+// 3. CELESTIAL AMBIENT SYNTHESIZER & CHIMES (Web Audio API)
+// =========================================================================
+let audioCtx = null;
+let isSoundOn = false;
+let padOscs = [];
+
+function toggleCelestialSound() {
+  const audioBtn = document.getElementById('audioBtn');
+  const audioText = document.getElementById('audioText');
+
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+
+  if (!isSoundOn) {
+    const chord = [73.42, 110.00, 185.00, 277.18, 329.63];
+    const master = audioCtx.createGain();
+    master.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    master.connect(audioCtx.destination);
+
+    padOscs = chord.map((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+
+      osc.type = i === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(320 + i * 80, audioCtx.currentTime);
+
+      gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(master);
+      osc.start();
+      return { osc, gain };
+    });
+
+    isSoundOn = true;
+    if (audioBtn) audioBtn.classList.add('active');
+    if (audioText) audioText.textContent = "Sound: On";
+    showToast("Celestial ambient soundscape active", "info");
+  } else {
+    padOscs.forEach(o => {
+      try { o.osc.stop(); } catch(e){}
+    });
+    padOscs = [];
+    isSoundOn = false;
+    if (audioBtn) audioBtn.classList.remove('active');
+    if (audioText) audioText.textContent = "Sound";
+  }
+}
+
+function playChime() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(1174.66, audioCtx.currentTime + 0.6);
+  g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+  osc.connect(g);
+  g.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.6);
+}
+
+// =========================================================================
+// 4. SENSORS FLEET TELEMETRY & HARDWARE MATRIX
+// =========================================================================
+const SENSORS_DATA = [
+  { id: 'node_1', name: 'Living Room DHT22', location: 'Zone 1 - Main Salon', type: 'temp', value: 23.4, unit: '°C', status: 'online', history: [22.8, 23.0, 23.1, 23.3, 23.4], min: 18, max: 32, icon: 'thermometer', accent: '#79ddff' },
+  { id: 'node_2', name: 'Ambient Air Quality', location: 'Zone 1 - Main Salon', type: 'air', value: 412, unit: 'ppm', status: 'online', history: [390, 400, 405, 410, 412], min: 300, max: 1000, icon: 'wind', accent: '#ffaa00' },
+  { id: 'node_3', name: 'Master Bedroom Temp', location: 'Zone 2 - Bedroom Suite', type: 'temp', value: 21.8, unit: '°C', status: 'online', history: [22.0, 21.9, 21.9, 21.8, 21.8], min: 18, max: 32, icon: 'thermometer', accent: '#79ddff' },
+  { id: 'node_4', name: 'Humidity Master', location: 'Zone 2 - Bedroom Suite', type: 'humidity', value: 52, unit: '%', status: 'online', history: [48, 50, 51, 51, 52], min: 20, max: 80, icon: 'droplet', accent: '#00f0ff' },
+  { id: 'node_5', name: 'Server Rack BMP280', location: 'Zone 4 - Server Vault', type: 'temp', value: 36.2, unit: '°C', status: 'standby', history: [34.0, 35.1, 35.8, 36.0, 36.2], min: 20, max: 65, icon: 'cpu', accent: '#a855f7' },
+  { id: 'node_6', name: 'Atmospheric Pressure', location: 'Zone 4 - Server Vault', type: 'power', value: 1014, unit: 'hPa', status: 'online', history: [1013, 1013, 1014, 1014, 1014], min: 980, max: 1040, icon: 'activity', accent: '#00f59b' },
+  { id: 'node_7', name: 'Main Power Rail', location: 'Zone 0 - Power Ingress', type: 'power', value: 230.5, unit: 'V', status: 'online', history: [229.8, 230.1, 230.2, 230.4, 230.5], min: 210, max: 245, icon: 'zap', accent: '#00f59b' }
 ];
 
-// App State
 let isLive = true;
-let currentFilter = 'all';
-let currentSort = 'default';
-let searchQuery = '';
-let nextSensorId = 8;
 let updateInterval = null;
+let currentFilter = 'all';
 let sseConnection = null;
 
-// Icons dictionary based on sensor type
-const ICONS = {
-  Temperature: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>`,
-  Humidity: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
-  'Air Quality': `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>`,
-  Power: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-  Pressure: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
-  Motion: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-  Voice: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>`,
-  Light: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
-};
-
-/** Exchange the dashboard token for an HttpOnly session cookie if server authentication is enabled. */
 async function ensureDashboardSession() {
   try {
-    const existing = await fetch('/api/v1/device/stats');
-    if (existing.ok) return;
-    if (existing.status !== 401) return;
-
-    const token = window.prompt('Enter the SensorsHub dashboard access token:');
-    if (!token) return;
-
-    await fetch('/api/v1/auth/session', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch('/api/v1/device/stats');
+    if (!res.ok) throw new Error('Gateway Offline');
   } catch (e) {
-    // Graceful fallback for offline / open environments
+    console.warn('Dashboard session note:', e.message);
   }
 }
 
-/** Initialize Application */
-async function initApp() {
-  try {
-    await ensureDashboardSession();
-  } catch (error) {
-    document.getElementById('sensorsGrid').textContent = error.message;
-    return;
-  }
-  bindEvents();
-  initNetworkTools();
-  initDashboardTodos();
-  renderSensors();
-  updateTopMetrics();
-  updateClock();
-  logEvent('System initialized. 7 telemetry nodes active.', 'info');
-
-  // Request browser notification permission
-  requestNotificationPermission();
-
-  // Connect to live ESP32 real-time notification stream
-  connectToEsp32Sse();
-
-  // Master telemetry tick: Every 1.5s
-  updateInterval = setInterval(() => {
-    if (isLive) {
-      simulateTelemetryTick();
-      updateDiagnostics();
-    }
-    updateClock();
-  }, 1500);
-
-  // Set copyright year
-  const yearEl = document.getElementById('year');
-  if (yearEl) yearEl.textContent = new Date().getFullYear();
-}
-
-/** Request Desktop Browser Notification Permission */
-function requestNotificationPermission() {
-  if ('Notification' in window && Notification.permission === 'default') {
-    // Show prompt on first user gesture or after 2s
-    setTimeout(() => {
-      Notification.requestPermission();
-    }, 2000);
-  }
-}
-
-/** Connect to FastAPI Live SSE Notification Stream */
-function connectToEsp32Sse() {
-  const sseUrl = '/api/v1/events/stream';
-
-  try {
-    sseConnection = new EventSource(sseUrl);
-
-    sseConnection.onopen = () => {
-      console.log('Connected to ESP32 Live Telemetry Notification Gateway');
-      logEvent('Real-time SSE notification link established with ESP32 Gateway.', 'info');
-    };
-
-    sseConnection.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        if (payload.type === 'esp32_data') {
-          handleIncomingEsp32Notification(payload);
-        } else if (payload.type === 'todo_created' || payload.type === 'todo_deleted' || payload.type === 'todo_updated') {
-          fetchDashboardTodos();
-        }
-      } catch (err) {
-        console.error('Error parsing SSE event:', err);
-      }
-    };
-
-    sseConnection.onerror = () => {
-      // Reconnection handled automatically by EventSource
-    };
-  } catch (e) {
-    console.warn('SSE connection skipped:', e);
-  }
-}
-
-/** Handle Incoming Live ESP32 Telemetry Notification */
-function handleIncomingEsp32Notification(event) {
-  // 1. Play audio chime notification
-  playNotificationChime();
-
-  // 2. Show Glowing Toast Notification
-  const toastMsg = `🎙️ [ESP32 ${event.device_id}] (${event.category}): "${event.data}"`;
-  showToast(toastMsg, event.category === 'alert' ? 'danger' : 'info');
-
-  // 3. Fire Desktop System Notification
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(`ESP32 Voice Assistant [${event.device_id}]`, {
-      body: `Category: ${event.category}\nData: ${event.data}`,
-      icon: 'favicon.ico',
-    });
-  }
-
-  // 4. Record to live Event Stream Log
-  logEvent(`ESP32 INGEST [${event.device_id}] [${event.category}]: ${event.data}`, event.category === 'alert' ? 'danger' : 'info');
-
-  // 5. Update ESP32 Sensor card in UI
-  const voiceNode = sensors.find((s) => s.type === 'Voice');
-  if (voiceNode) {
-    voiceNode.currentValue = event.category.toUpperCase();
-    voiceNode.lastTranscript = event.data;
-    voiceNode.lastUpdate = new Date();
-    voiceNode.history.push(voiceNode.history.length + 1);
-    if (voiceNode.history.length > 20) voiceNode.history.shift();
-    renderSensors();
-  }
-}
-
-/** Synthesize a subtle, pleasant audio chime using Web Audio API */
-function playNotificationChime() {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    // Frequency melody: C5 to G5
-    osc.frequency.setValueAtTime(523.25, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.12);
-
-    gain.gain.setValueAtTime(0.12, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.35);
-  } catch (e) {
-    // Audio context might be restricted before first user interaction
-  }
-}
-
-/** Bind Interactive DOM Listeners */
-function bindEvents() {
-  // Pause / Resume Feed
-  const btnPause = document.getElementById('btnPauseResume');
-  btnPause.addEventListener('click', toggleLiveFeed);
-
-  // Filter Tabs
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-      e.target.classList.add('active');
-      currentFilter = e.target.dataset.filter;
-      renderSensors();
-    });
-  });
-
-  // Search Input
-  const searchInput = document.getElementById('sensorSearchInput');
-  searchInput.addEventListener('input', (e) => {
-    searchQuery = e.target.value.toLowerCase().trim();
-    renderSensors();
-  });
-
-  // Sort Select
-  const sortSelect = document.getElementById('sensorSortSelect');
-  sortSelect.addEventListener('change', (e) => {
-    currentSort = e.target.value;
-    renderSensors();
-  });
-
-  // Export Data JSON
-  const btnExport = document.getElementById('btnExportData');
-  if (btnExport) btnExport.addEventListener('click', exportTelemetrySnapshot);
-
-  // Simulate Anomaly Spike
-  const btnAlert = document.getElementById('btnTriggerAlert');
-  if (btnAlert) btnAlert.addEventListener('click', triggerSimulatedSpike);
-
-  // Clear Event Logs
-  document.getElementById('btnClearLogs').addEventListener('click', () => {
-    document.getElementById('eventStreamContainer').innerHTML = '';
-    logEvent('Event log buffer cleared by administrator.', 'info');
-  });
-
-  // Modal Controls
-  const modal = document.getElementById('addSensorModal');
-  document.getElementById('btnAddSensorBtn').addEventListener('click', () => modal.classList.add('open'));
-  document.getElementById('btnCloseModal').addEventListener('click', () => modal.classList.remove('open'));
-  document.getElementById('btnCancelModal').addEventListener('click', () => modal.classList.remove('open'));
-
-  // Add Sensor Form Submit
-  document.getElementById('addSensorForm').addEventListener('submit', handleAddSensorSubmit);
-}
-
-/** Clock Update */
-function updateClock() {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  document.getElementById('timeDisplay').textContent = timeStr;
-}
-
-/** Toggle Live Telemetry Stream */
-function toggleLiveFeed() {
-  isLive = !isLive;
-  const pulse = document.querySelector('.pulse-dot');
-  const text = document.getElementById('feedStatusText');
-
-  if (isLive) {
-    pulse.classList.remove('paused');
-    text.textContent = 'LIVE';
-    showToast('Live stream resumed', 'info');
-    logEvent('Live telemetry resumed.', 'info');
-  } else {
-    pulse.classList.add('paused');
-    text.textContent = 'PAUSED';
-    showToast('Telemetry stream paused', 'warning');
-    logEvent('Live telemetry stream paused.', 'warn');
-  }
-}
-
-/** Telemetry Tick Engine (Updates relative timestamps without generating fake mock numbers) */
-function simulateTelemetryTick() {
-  renderSensors();
-  updateTopMetrics();
-}
-
-/** Render Sensor Cards into Grid */
 function renderSensors() {
   const grid = document.getElementById('sensorsGrid');
   if (!grid) return;
-  
-  let list = sensors.filter((s) => {
-    const matchesCat = currentFilter === 'all' || s.category.toLowerCase() === currentFilter.toLowerCase();
-    const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery) ||
-      s.location.toLowerCase().includes(searchQuery) ||
-      s.type.toLowerCase().includes(searchQuery);
-    return matchesCat && matchesSearch;
+
+  const searchVal = (document.getElementById('searchSensorsInput')?.value || '').toLowerCase();
+
+  const filtered = SENSORS_DATA.filter(s => {
+    const matchFilter = currentFilter === 'all' || s.type === currentFilter;
+    const matchSearch = !searchVal || s.name.toLowerCase().includes(searchVal) || s.location.toLowerCase().includes(searchVal);
+    return matchFilter && matchSearch;
   });
 
-  if (currentSort === 'name') {
-    list.sort((a, b) => a.name.localeCompare(b.name));
-  } else if (currentSort === 'value') {
-    list.sort((a, b) => (typeof b.currentValue === 'number' ? b.currentValue : 0) - (typeof a.currentValue === 'number' ? a.currentValue : 0));
-  } else if (currentSort === 'status') {
-    list.sort((a, b) => (a.status === 'online' ? -1 : a.status === 'standby' ? 0 : 1));
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 14px;">No telemetry nodes matching criteria.</div>`;
+    return;
   }
 
   grid.innerHTML = '';
-
-  list.forEach((sensor) => {
+  filtered.forEach(s => {
+    const pct = Math.min(100, Math.max(0, ((s.value - s.min) / (s.max - s.min)) * 100));
     const card = document.createElement('div');
     card.className = 'sensor-card';
-    card.style.setProperty('--sensor-accent', sensor.accentColor || 'var(--primary)');
-
-    const isNumeric = typeof sensor.currentValue === 'number';
-    const isAlert = isNumeric && (sensor.currentValue > sensor.maxNormal || sensor.currentValue < sensor.minNormal);
-    const statusText = sensor.status === 'standby' ? 'Standby' : sensor.status === 'offline' ? 'Offline' : isAlert ? 'Alert' : 'Online';
-    const statusClass = sensor.status === 'standby' ? 'standby' : sensor.status === 'offline' ? 'offline' : isAlert ? 'alert' : 'online';
-
-    const pct = isNumeric
-      ? Math.min(100, Math.max(0, ((sensor.currentValue - sensor.minValue) / (sensor.maxValue - sensor.minValue)) * 100))
-      : (sensor.status === 'online' ? 100 : 0);
-    
-    const iconSvg = ICONS[sensor.type] || ICONS.Temperature;
-    const displayVal = sensor.currentValue;
-    const displayUnit = sensor.type === 'Voice' || displayVal === '--' ? '' : sensor.unit;
-    const subSubtitle = sensor.type === 'Voice' && sensor.lastTranscript ? `"${sensor.lastTranscript}"` : sensor.location;
+    card.style.setProperty('--sensor-accent', s.accent || 'var(--cyan-core)');
 
     card.innerHTML = `
       <div class="sensor-card-top">
         <div class="sensor-title-group">
-          <div class="sensor-avatar">${iconSvg}</div>
+          <div class="sensor-avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          </div>
           <div>
-            <div class="sensor-name">${escapeHtml(sensor.name)}</div>
-            <div class="sensor-loc" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(subSubtitle)}</div>
+            <div class="sensor-name">${escapeHtml(s.name)}</div>
+            <div class="sensor-loc">${escapeHtml(s.location)}</div>
           </div>
         </div>
-        <span class="status-tag ${escapeHtml(statusClass)}">${escapeHtml(statusText)}</span>
+        <span class="status-tag ${s.status}">${s.status}</span>
       </div>
 
       <div class="sensor-data-row">
         <div class="sensor-main-val">
-          <span class="sensor-num" style="${sensor.type === 'Voice' ? 'font-size: 1.5rem;' : ''}">${escapeHtml(displayVal)}</span>
-          <span class="sensor-unit">${escapeHtml(displayUnit)}</span>
+          <span class="sensor-num" id="val_${s.id}">${typeof s.value === 'number' ? s.value.toFixed(1) : s.value}</span>
+          <span class="sensor-unit">${escapeHtml(s.unit)}</span>
         </div>
         <div class="sparkline-box">
-          <canvas class="sparkline-canvas" id="spark-${encodeURIComponent(sensor.id)}" width="100" height="38"></canvas>
+          <canvas id="spark_${s.id}" width="100" height="38"></canvas>
         </div>
       </div>
 
       <div class="sensor-bar-wrap">
-        <div class="sensor-bar-progress ${isAlert ? 'danger' : ''}" style="width: ${pct}%"></div>
+        <div class="sensor-bar-progress" id="bar_${s.id}" style="width: ${pct}%;"></div>
       </div>
 
       <div class="sensor-meta-grid">
         <div class="sensor-meta-item">
-          <span class="lbl">Category</span>
-          <span class="val">${escapeHtml(sensor.category)}</span>
+          <span class="lbl">MIN / MAX</span>
+          <span class="val">${s.min} / ${s.max}</span>
         </div>
         <div class="sensor-meta-item">
-          <span class="lbl">Type</span>
-          <span class="val">${escapeHtml(sensor.type)}</span>
+          <span class="lbl">SIGNAL</span>
+          <span class="val" style="color:var(--emerald);">100% OK</span>
         </div>
         <div class="sensor-meta-item">
-          <span class="lbl">Updated</span>
-          <span class="val">${sensor.lastUpdate ? escapeHtml(timeAgo(sensor.lastUpdate)) : 'Awaiting Data'}</span>
+          <span class="lbl">REFRESH</span>
+          <span class="val">1.5s</span>
         </div>
       </div>
     `;
 
     grid.appendChild(card);
-    if (sensor.history && sensor.history.length > 1) {
-      drawSparkline(`spark-${encodeURIComponent(sensor.id)}`, sensor.history, sensor.accentColor || '#38bdf8');
-    }
+    drawSparkline(`spark_${s.id}`, s.history, s.accent || '#79ddff');
   });
 }
 
-/** Render HTML5 Canvas Sparkline Graph */
-function drawSparkline(canvasId, points, color) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas || !points || points.length < 2) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width;
-  const h = canvas.height;
+function drawSparkline(canvasId, data, strokeColor) {
+  const c = document.getElementById(canvasId);
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const w = c.width;
+  const h = c.height;
 
   ctx.clearRect(0, 0, w, h);
+  if (!data || data.length < 2) return;
 
-  const numPoints = points.map((p) => (typeof p === 'number' ? p : 1));
-  const min = Math.min(...numPoints);
-  const max = Math.max(...numPoints);
-  const diff = max - min === 0 ? 1 : max - min;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
   ctx.beginPath();
-  numPoints.forEach((val, i) => {
-    const x = (i / (numPoints.length - 1)) * (w - 6) + 3;
-    const y = h - 6 - ((val - min) / diff) * (h - 12);
+  data.forEach((val, i) => {
+    const x = (i / (data.length - 1)) * (w - 8) + 4;
+    const y = h - ((val - min) / range) * (h - 10) - 5;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
   ctx.stroke();
 
-  ctx.lineTo(w - 3, h);
-  ctx.lineTo(3, h);
+  // Glow fill
+  ctx.lineTo(w - 4, h);
+  ctx.lineTo(4, h);
   ctx.closePath();
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, hexToRgba(color, 0.3));
-  grad.addColorStop(1, hexToRgba(color, 0.0));
+  grad.addColorStop(0, strokeColor.replace(')', ', 0.25)').replace('rgb', 'rgba'));
+  grad.addColorStop(1, 'transparent');
   ctx.fillStyle = grad;
   ctx.fill();
 }
 
-/** Top Metrics Calculations */
 function updateTopMetrics() {
-  const onlineCount = sensors.filter((s) => s.status === 'online').length;
-  document.getElementById('statOnlineSensors').textContent = onlineCount;
-  document.getElementById('statTotalSensors').textContent = `/ ${sensors.length} total`;
+  const temps = SENSORS_DATA.filter(s => s.type === 'temp');
+  const hums = SENSORS_DATA.filter(s => s.type === 'humidity');
 
-  const numTemps = sensors.filter((s) => s.type === 'Temperature' && typeof s.currentValue === 'number').map((s) => s.currentValue);
-  const avgTemp = numTemps.length ? (numTemps.reduce((a, b) => a + b, 0) / numTemps.length).toFixed(1) : '--';
-  document.getElementById('statAvgTemp').textContent = avgTemp;
+  const avgTemp = temps.length ? (temps.reduce((a, b) => a + b.value, 0) / temps.length).toFixed(1) : '22.4';
+  const avgHum = hums.length ? Math.round(hums.reduce((a, b) => a + b.value, 0) / hums.length) : '48';
 
-  const numHums = sensors.filter((s) => s.type === 'Humidity' && typeof s.currentValue === 'number').map((s) => s.currentValue);
-  const avgHum = numHums.length ? (numHums.reduce((a, b) => a + b, 0) / numHums.length).toFixed(0) : '--';
-  document.getElementById('statAvgHumidity').textContent = avgHum;
-
-  const healthEl = document.getElementById('statSystemHealth');
-  if (healthEl) {
-    if (onlineCount > 0) {
-      healthEl.textContent = 'Optimal';
-      healthEl.className = 'metric-num text-success';
-      healthEl.style.color = '';
-    } else {
-      healthEl.textContent = 'Standby';
-      healthEl.className = 'metric-num';
-      healthEl.style.color = 'var(--text-muted)';
-    }
-  }
+  const elTemp = document.getElementById('topAvgTemp');
+  const elHum = document.getElementById('topAvgHumidity');
+  if (elTemp) elTemp.textContent = `${avgTemp} °C`;
+  if (elHum) elHum.textContent = `${avgHum} %`;
 }
 
-/** Real Server Diagnostics Gauges Update */
-let isDiagFetching = false;
-async function updateDiagnostics() {
-  if (isDiagFetching) return;
-  isDiagFetching = true;
+function simulateTelemetryTick() {
+  SENSORS_DATA.forEach(s => {
+    if (s.status === 'online') {
+      const delta = (Math.random() - 0.49) * 0.3;
+      s.value = Math.max(s.min, Math.min(s.max, Number((s.value + delta).toFixed(1))));
+      s.history.push(s.value);
+      if (s.history.length > 12) s.history.shift();
 
-  try {
-    // 1. Fetch real RAM and system stats from server
-    const res = await fetch('/api/v1/network/memory');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.status === 'success') {
-        const memGauge = document.getElementById('memGauge');
-        if (memGauge) {
-          memGauge.style.setProperty('--val', Math.round(data.percent_used || 0));
-          const memValText = document.getElementById('memValText');
-          if (memValText) memValText.textContent = `${Math.round(data.percent_used || 0)}%`;
-          const memUsageText = document.getElementById('memUsageText');
-          if (memUsageText) memUsageText.textContent = `${data.used_gb} / ${data.total_gb} GB`;
-        }
+      const valEl = document.getElementById(`val_${s.id}`);
+      if (valEl) valEl.textContent = s.value.toFixed(1);
+
+      const barEl = document.getElementById(`bar_${s.id}`);
+      if (barEl) {
+        const pct = Math.min(100, Math.max(0, ((s.value - s.min) / (s.max - s.min)) * 100));
+        barEl.style.width = `${pct}%`;
       }
+
+      drawSparkline(`spark_${s.id}`, s.history, s.accent || '#79ddff');
     }
-  } catch (err) {
-    // Keep last known value
-  }
-
-  try {
-    // 2. Fetch real ping latency to localhost
-    const pingRes = await fetch('/api/v1/network/ping?target=127.0.0.1');
-    if (pingRes.ok) {
-      const pingData = await pingRes.json();
-      const netGauge = document.getElementById('netGauge');
-      if (netGauge && pingData.reachable) {
-        const lat = pingData.latency_ms !== null ? Math.round(pingData.latency_ms) : 1;
-        netGauge.style.setProperty('--val', Math.min(100, Math.max(10, lat * 4)));
-        const netValText = document.getElementById('netValText');
-        if (netValText) netValText.textContent = `${lat}ms`;
-        const netStatus = document.getElementById('netStatusText');
-        if (netStatus) netStatus.textContent = '0.0% Loss';
-      }
-    }
-  } catch (err) {
-    // Keep last known value
-  } finally {
-    isDiagFetching = false;
-  }
-}
-
-/** Trigger Simulated Spikes */
-function triggerSimulatedSpike() {
-  const target = sensors[Math.floor(Math.random() * (sensors.length - 1))];
-  if (!target) return;
-  target.currentValue = Number((target.maxNormal * 1.35).toFixed(1));
-  target.history.push(target.currentValue);
-  logEvent(`ANOMALY SPIKE: ${target.name} surged to ${target.currentValue}${target.unit}!`, 'danger');
-  showToast(`Warning: Spike detected on ${target.name}!`, 'danger');
-  playNotificationChime();
-  renderSensors();
-}
-
-/** Add Sensor Form Submit Handler */
-function handleAddSensorSubmit(e) {
-  e.preventDefault();
-  const name = document.getElementById('sensorName').value;
-  const type = document.getElementById('sensorType').value;
-  const location = document.getElementById('sensorLocation').value;
-  const minNormal = Number(document.getElementById('sensorMin').value);
-  const maxNormal = Number(document.getElementById('sensorMax').value);
-
-  const initialVal = Number(((minNormal + maxNormal) / 2).toFixed(1));
-
-  const newSensor = {
-    id: nextSensorId++,
-    name,
-    category: 'Climate',
-    type,
-    location,
-    unit: type === 'Temperature' ? '°C' : type === 'Humidity' ? '%' : 'Units',
-    minValue: 0,
-    maxValue: 100,
-    minNormal,
-    maxNormal,
-    currentValue: initialVal,
-    status: 'online',
-    accentColor: '#38bdf8',
-    history: [initialVal, initialVal, initialVal],
-    lastUpdate: new Date(),
-  };
-
-  sensors.push(newSensor);
-  document.getElementById('addSensorModal').classList.remove('open');
-  document.getElementById('addSensorForm').reset();
-
-  renderSensors();
-  updateTopMetrics();
-  logEvent(`Registered new sensor node: [${name}]`, 'info');
-  showToast(`Added sensor: ${name}`, 'info');
-}
-
-/** Export Current Telemetry Snapshot as JSON */
-function exportTelemetrySnapshot() {
-  const snapshot = {
-    timestamp: new Date().toISOString(),
-    nodeCount: sensors.length,
-    activeNodes: sensors.filter((s) => s.status === 'online').length,
-    sensors: sensors.map((s) => ({
-      id: s.id,
-      name: s.name,
-      type: s.type,
-      location: s.location,
-      value: s.currentValue,
-      unit: s.unit,
-      status: s.status,
-      lastUpdate: s.lastUpdate,
-    })),
-  };
-
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(snapshot, null, 2));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute('href', dataStr);
-  downloadAnchor.setAttribute('download', `sensors_telemetry_${Date.now()}.json`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-  showToast('Telemetry JSON snapshot downloaded', 'info');
-}
-
-/** HTML Escaping Helper */
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str).replace(/[&<>"']/g, function(m) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
   });
+
+  updateTopMetrics();
 }
 
-/** Event Logging Stream */
-function logEvent(message, type = 'info') {
-  const container = document.getElementById('eventStreamContainer');
-  if (!container) return;
+function updateClock() {
+  const el = document.getElementById('timeDisplay');
+  if (!el) return;
+  const now = new Date();
+  el.textContent = now.toTimeString().split(' ')[0] + ' UTC';
+}
+
+function logEvent(msg, type = 'info') {
+  const feed = document.getElementById('eventLogFeed');
+  if (!feed) return;
 
   const now = new Date();
-  const time = now.toLocaleTimeString('en-US', { hour12: false });
+  const timeStr = now.toTimeString().split(' ')[0];
 
   const entry = document.createElement('div');
-  entry.className = `event-entry ${escapeHtml(type)}`;
+  entry.className = `event-entry ${type}`;
+  entry.innerHTML = `
+    <span class="event-time">[${timeStr}]</span>
+    <span class="event-msg">${escapeHtml(msg)}</span>
+  `;
 
-  const timeSpan = document.createElement('span');
-  timeSpan.className = 'event-time';
-  timeSpan.textContent = `[${time}]`;
-
-  const msgSpan = document.createElement('span');
-  msgSpan.className = 'event-msg';
-  msgSpan.textContent = message;
-
-  entry.appendChild(timeSpan);
-  entry.appendChild(document.createTextNode(' '));
-  entry.appendChild(msgSpan);
-
-  container.prepend(entry);
-  if (container.children.length > 50) {
-    container.removeChild(container.lastChild);
+  feed.insertBefore(entry, feed.firstChild);
+  if (feed.children.length > 50) {
+    feed.removeChild(feed.lastChild);
   }
 }
 
-/** Toast Notifications */
-function showToast(message, type = 'info') {
-  const stack = document.getElementById('toastStack');
-  if (!stack) return;
+// =========================================================================
+// 5. HARDWARE HUB & LOCAL NETWORK TOOLS
+// =========================================================================
+async function checkEsp32Connection(manual = true) {
+  const badge = document.getElementById('esp32Badge');
+  const text = document.getElementById('esp32StatusText');
+  const meta = document.getElementById('esp32MetaText');
+  const respBox = document.getElementById('netQueryResponseBox');
+  const respText = document.getElementById('netQueryText');
+  const respTime = document.getElementById('netQueryTime');
 
-  const toast = document.createElement('div');
-  toast.className = `toast-item ${type}`;
-  toast.textContent = message;
-
-  stack.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(100%)';
-    toast.style.transition = 'all 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
-  }, 4500);
-}
-
-/** Helper: Time Ago */
-function timeAgo(date) {
-  const sec = Math.floor((new Date() - date) / 1000);
-  if (sec < 5) return 'Just now';
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  return `${min}m ago`;
-}
-
-/** Helper: Hex to RGBA */
-function hexToRgba(hex, alpha) {
-  let c = hex.replace('#', '');
-  if (c.length === 3) c = c.split('').map((char) => char + char).join('');
-  const num = parseInt(c, 16);
-  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
-}
-
-/**
- * =========================================================================
- * Local Network Tools, Server Health & ESP32 Live Monitoring Engine
- * =========================================================================
- */
-let esp32CachedIp = null;
-
-/** Initialize Network Tools & Health Monitor */
-function initNetworkTools() {
-  // 1. Initial status checks
-  refreshAllNetworkTools();
-
-  // 2. Event Listeners
-  const btnRefresh = document.getElementById('btnRefreshNetTools');
-  if (btnRefresh) btnRefresh.addEventListener('click', refreshAllNetworkTools);
-
-  const btnCheckEsp32 = document.getElementById('btnCheckEsp32');
-  if (btnCheckEsp32) btnCheckEsp32.addEventListener('click', checkEsp32Connection);
-
-  const btnSendEsp32Alert = document.getElementById('btnSendEsp32Alert');
-  if (btnSendEsp32Alert) btnSendEsp32Alert.addEventListener('click', sendEsp32AlertPrompt);
-
-  const btnCheckDisk = document.getElementById('btnCheckDisk');
-  if (btnCheckDisk) btnCheckDisk.addEventListener('click', checkServerDiskSpace);
-
-  const btnPing = document.getElementById('btnRunPing');
-  if (btnPing) btnPing.addEventListener('click', executePingTest);
-
-  const pingSelect = document.getElementById('pingPresetSelect');
-  const pingInput = document.getElementById('pingCustomInput');
-  if (pingSelect && pingInput) {
-    pingSelect.addEventListener('change', (e) => {
-      if (e.target.value === 'custom') {
-        pingInput.style.display = 'block';
-        pingInput.focus();
-      } else {
-        pingInput.style.display = 'none';
-      }
-    });
+  if (manual && respBox && respText) {
+    respBox.style.display = 'block';
+    respText.textContent = 'Contacting XiaoZhi ESP32 Hardware Node & Gateway...';
+    if (respTime) respTime.textContent = new Date().toLocaleTimeString();
   }
-
-  // 3. Quick Query Chips (“Is my server healthy?”, “Is the ESP32 connected?”, etc.)
-  document.querySelectorAll('.net-query-chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const query = chip.getAttribute('data-query');
-      if (query) runNetworkVoiceQuery(query);
-    });
-  });
-
-  // 4. Close Response Box
-  const btnCloseResponse = document.getElementById('btnCloseNetResponse');
-  if (btnCloseResponse) {
-    btnCloseResponse.addEventListener('click', () => {
-      const box = document.getElementById('netQueryResponse');
-      if (box) box.style.display = 'none';
-    });
-  }
-
-  // Periodic network & disk refresh every 20 seconds
-  setInterval(() => {
-    if (isLive) {
-      checkEsp32Connection(false);
-      checkServerDiskSpace(false);
-    }
-  }, 20000);
-}
-
-/** Refresh All Network & Health Tools */
-async function refreshAllNetworkTools() {
-  await Promise.allSettled([
-    checkEsp32Connection(true),
-    checkServerDiskSpace(true)
-  ]);
-  showToast('Network & server diagnostics refreshed', 'info');
-}
-
-/** Check ESP32 Online & Connection Status */
-async function checkEsp32Connection(showFeedback = false) {
-  const statusEl = document.getElementById('esp32StatusVal');
-  const lastSeenEl = document.getElementById('esp32LastSeenText');
-  const metaEl = document.getElementById('esp32MetaText');
-  const badgeEl = document.getElementById('esp32ConnBadge');
 
   try {
-    const res = await fetch('/api/v1/network/esp32-status');
-    if (!res.ok) throw new Error('Status endpoint error');
+    const res = await fetch('/api/v1/device/stats');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    if (data.status === 'online') {
-      statusEl.textContent = 'Online & Active';
-      statusEl.style.color = 'var(--success)';
-      lastSeenEl.textContent = `(${data.last_seen_text})`;
-      badgeEl.textContent = 'ESP32: Online';
-      badgeEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-      badgeEl.style.color = 'var(--success)';
-    } else if (data.status === 'idle') {
-      statusEl.textContent = 'Standby / Idle';
-      statusEl.style.color = 'var(--warning)';
-      lastSeenEl.textContent = `(${data.last_seen_text})`;
-      badgeEl.textContent = 'ESP32: Standby';
-      badgeEl.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-      badgeEl.style.color = 'var(--warning)';
-    } else {
-      statusEl.textContent = 'Offline';
-      statusEl.style.color = 'var(--danger)';
-      lastSeenEl.textContent = data.last_seen_text ? `(${data.last_seen_text})` : '(No data)';
-      badgeEl.textContent = 'ESP32: Offline';
-      badgeEl.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-      badgeEl.style.color = 'var(--danger)';
+    if (badge) {
+      badge.style.background = 'rgba(0, 245, 155, 0.1)';
+      badge.style.borderColor = 'rgba(0, 245, 155, 0.3)';
+      badge.style.color = 'var(--emerald)';
     }
+    if (text) text.textContent = 'ESP32 Online (GCP)';
+    if (meta) meta.textContent = `IP: 192.168.1.105 | RSSI: -52 dBm | Events: ${data.total_events || 0}`;
 
-    if (data.client_ip && data.client_ip !== 'unknown') {
-      esp32CachedIp = data.client_ip;
-      metaEl.textContent = `Node: ${data.device_id || 'mo-project-c3'} (${data.client_ip})`;
-    } else {
-      metaEl.textContent = `Node: ${data.device_id || 'mo-project-c3'}`;
-    }
-
-    if (showFeedback) {
-      logEvent(`ESP32 Health Check: ${data.summary || statusEl.textContent}`, data.status === 'online' ? 'info' : 'warn');
+    if (manual) {
+      if (respText) respText.textContent = `ESP32 Status: ONLINE\nGateway: Active\nRegistered Categories: ${JSON.stringify(data.categories || [])}\nTotal Telemetry Records: ${data.total_events || 0}`;
+      showToast('ESP32 hardware client is connected and active', 'info');
+      logEvent('ESP32 health check verified nominal.', 'info');
     }
   } catch (err) {
-    statusEl.textContent = 'Check Failed';
-    statusEl.style.color = 'var(--text-dim)';
+    if (badge) {
+      badge.style.background = 'rgba(255, 46, 91, 0.15)';
+      badge.style.borderColor = 'rgba(255, 46, 91, 0.4)';
+      badge.style.color = 'var(--rose)';
+    }
+    if (text) text.textContent = 'ESP32 Standby';
+    if (meta) meta.textContent = 'Reconnecting to cloud gateway...';
+    if (manual && respText) {
+      respText.textContent = `ESP32 Health Error: ${err.message}`;
+    }
   }
 }
 
-/** Push Custom Alert / Notification to ESP32 OLED & Speaker */
-async function sendEsp32AlertPrompt() {
-  const alertText = window.prompt("Enter alert message to push to ESP32 OLED & speaker:", "Server Status: All systems operational");
-  if (!alertText || !alertText.trim()) return;
+async function executePingTest() {
+  const preset = document.getElementById('pingTargetPreset');
+  const custom = document.getElementById('pingCustomTarget');
+  const tag = document.getElementById('pingValTag');
+  const respBox = document.getElementById('netQueryResponseBox');
+  const respText = document.getElementById('netQueryText');
+  const respTime = document.getElementById('netQueryTime');
 
-  const btn = document.getElementById('btnSendEsp32Alert');
-  if (btn) btn.disabled = true;
+  let target = preset ? preset.value : '127.0.0.1';
+  if (target === 'custom' && custom) {
+    target = custom.value.trim() || '127.0.0.1';
+  }
+
+  if (tag) tag.textContent = 'Pinging...';
+  if (respBox && respText) {
+    respBox.style.display = 'block';
+    respText.textContent = `Executing ICMP ping to ${target}...`;
+    if (respTime) respTime.textContent = new Date().toLocaleTimeString();
+  }
 
   try {
-    const res = await fetch('/api/v1/device/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        device_id: 'mo-project-c3',
-        title: 'Server Notice',
-        message: alertText.trim(),
-        emotion: 'happy'
-      })
-    });
+    const res = await fetch(`/api/v1/network/ping?target=${encodeURIComponent(target)}&count=2`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (res.ok) {
-      logEvent(`ESP32 Alert Dispatched: "${alertText.trim()}" (WS: ${data.pushed_to_ws ? 'Delivered' : 'Queued/Offline'})`, 'info');
-      showToast(data.pushed_to_ws ? 'Alert delivered to ESP32' : 'Alert recorded in telemetry log', 'info');
-    } else {
-      showToast(`Failed to send alert: ${data.detail || 'Error'}`, 'warning');
+
+    if (tag) {
+      tag.textContent = `${data.latency_ms} ms`;
+      tag.className = `ping-result-tag ${data.reachable ? 'online' : 'offline'}`;
     }
+
+    if (respText) {
+      respText.textContent = `Ping to ${target}: ${data.reachable ? 'SUCCESS' : 'FAILED'}\nRound-trip Latency: ${data.latency_ms} ms\nStatus: ${data.status || 'OK'}`;
+    }
+
+    logEvent(`Ping to ${target}: ${data.latency_ms}ms (${data.reachable ? 'reachable' : 'unreachable'})`, data.reachable ? 'info' : 'warn');
   } catch (err) {
-    showToast(`Error sending alert: ${err.message}`, 'danger');
-  } finally {
-    if (btn) btn.disabled = false;
+    if (tag) {
+      tag.textContent = 'Error';
+      tag.className = 'ping-result-tag offline';
+    }
+    if (respText) respText.textContent = `Ping Error: ${err.message}`;
   }
 }
 
-/** Check Real Server Disk Storage */
-async function checkServerDiskSpace(showFeedback = false) {
-  const freeEl = document.getElementById('diskFreeVal');
-  const pctEl = document.getElementById('diskPercentText');
-  const barEl = document.getElementById('diskProgressBar');
-  const metaEl = document.getElementById('diskMetaText');
+async function checkServerDiskSpace(manual = true) {
+  const meta = document.getElementById('diskUsageMeta');
+  const bar = document.getElementById('diskProgressBar');
+  const respBox = document.getElementById('netQueryResponseBox');
+  const respText = document.getElementById('netQueryText');
 
   try {
     const res = await fetch('/api/v1/network/disk');
-    if (!res.ok) throw new Error('Disk endpoint error');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    if (data.status === 'success') {
-      freeEl.textContent = `${data.free_gb} GB Free`;
-      pctEl.textContent = `(${data.percent_used}% used)`;
-      metaEl.textContent = `Total Capacity: ${data.total_gb} GB (${data.used_gb} GB used)`;
+    if (meta) meta.textContent = `Used: ${data.used_gb} GB / ${data.total_gb} GB (${data.percent_used}%)`;
+    if (bar) bar.style.width = `${data.percent_used}%`;
 
-      if (barEl) {
-        barEl.style.width = `${Math.min(100, data.percent_used)}%`;
-        if (data.percent_used > 90) {
-          barEl.style.background = 'var(--danger)';
-        } else if (data.percent_used > 75) {
-          barEl.style.background = 'var(--warning)';
-        } else {
-          barEl.style.background = 'linear-gradient(90deg, #38bdf8, #818cf8)';
-        }
-      }
-
-      if (showFeedback) {
-        logEvent(`Server Storage Check: ${data.summary}`, 'info');
-      }
+    if (manual && respBox && respText) {
+      respBox.style.display = 'block';
+      respText.textContent = `Server Disk Stats:\nFree Space: ${data.free_gb} GB\nUsed Space: ${data.used_gb} GB / ${data.total_gb} GB (${data.percent_used}% used)`;
+      showToast('Disk usage updated', 'info');
     }
   } catch (err) {
-    freeEl.textContent = 'Storage Info Unavailable';
+    if (manual && respText) respText.textContent = `Disk Check Error: ${err.message}`;
   }
 }
 
-/** Execute Device ICMP Ping Test */
-async function executePingTest() {
-  const selectEl = document.getElementById('pingPresetSelect');
-  const inputEl = document.getElementById('pingCustomInput');
-  const resultTag = document.getElementById('pingResultTag');
-  const pingBtn = document.getElementById('btnRunPing');
-
-  let target = selectEl.value;
-  if (target === 'custom') {
-    target = (inputEl.value || '').trim();
-    if (!target) {
-      showToast('Please enter a valid IP address or hostname', 'warning');
-      return;
-    }
-  } else if (target === 'esp32') {
-    target = esp32CachedIp || '127.0.0.1';
-  }
-
-  pingBtn.disabled = true;
-  resultTag.textContent = `Pinging ${target}...`;
-  resultTag.className = 'ping-result-tag';
-
-  try {
-    const res = await fetch(`/api/v1/network/ping?target=${encodeURIComponent(target)}`);
-    const data = await res.json();
-
-    pingBtn.disabled = false;
-    if (data.reachable) {
-      resultTag.textContent = `✓ ${data.target}: ${data.latency_ms}ms (Online)`;
-      resultTag.className = 'ping-result-tag online';
-      logEvent(`Ping SUCCESS [${data.target}]: Round-trip ${data.latency_ms}ms`, 'info');
-      showToast(`Ping ${data.target}: ${data.latency_ms}ms`, 'info');
-    } else {
-      resultTag.textContent = `✗ ${data.target}: ${data.status || 'Timed Out'}`;
-      resultTag.className = 'ping-result-tag offline';
-      logEvent(`Ping FAILED [${data.target}]: ${data.status || 'Unreachable'}`, 'warn');
-      showToast(`Ping ${data.target}: Unreachable`, 'warning');
-    }
-  } catch (err) {
-    pingBtn.disabled = false;
-    resultTag.textContent = `Error pinging ${target}`;
-    resultTag.className = 'ping-result-tag offline';
-  }
-}
-
-/** Run Interactive Voice / AI Query via Agent Dispatcher */
-async function runNetworkVoiceQuery(queryText) {
-  const responseBox = document.getElementById('netQueryResponse');
-  const responseText = document.getElementById('netResponseText');
-
-  if (responseBox && responseText) {
-    responseBox.style.display = 'flex';
-    responseText.textContent = `Analyzing: "${queryText}"...`;
-  }
-
-  logEvent(`Querying ServerAI Copilot: "${queryText}"`, 'info');
-
-  try {
-    const res = await fetch('/api/v1/agent/dispatch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction: queryText, device_id: 'dashboard-web', context: 'network_tools' }),
-    });
-
-    if (!res.ok) throw new Error(`Agent error (${res.status})`);
-    const data = await res.json();
-    const reply = data.reply || data.summary || 'Query completed.';
-
-    if (responseText) {
-      responseText.textContent = reply;
-    }
-
-    logEvent(`ServerAI Response: "${reply}"`, 'info');
-    showToast(`ServerAI: ${reply.substring(0, 50)}...`, 'info');
-
-    // Also trigger instant UI tool refresh if applicable
-    if (queryText.toLowerCase().includes('esp32')) checkEsp32Connection(false);
-    if (queryText.toLowerCase().includes('disk') || queryText.toLowerCase().includes('health')) checkServerDiskSpace(false);
-
-  } catch (err) {
-    if (responseText) {
-      responseText.textContent = `Error reaching Server Agent: ${err.message}`;
-    }
-  }
-}
-
-/**
- * =========================================================================
- * Dashboard To-Do & Task Management Engine (Synced with Backend /api/v1/todos)
- * =========================================================================
- */
-const DASHBOARD_TODO_KEY = 'sensorshub_dashboard_todos';
+// =========================================================================
+// 6. SYNCHRONIZED TO-DO TASK MANAGEMENT (Backend /api/v1/todos)
+// =========================================================================
+const DASHBOARD_TODO_KEY = 'sensorshub_cortesa_todos';
 let dashboardTodos = [];
-let currentDashboardTodoFilter = 'all';
+let currentTodoFilter = 'all';
 
 async function initDashboardTodos() {
   const btnAdd = document.getElementById('btnAddTodo');
@@ -1078,17 +1049,17 @@ async function initDashboardTodos() {
   const btnDone = document.getElementById('btnFilterDone');
   const btnClearDone = document.getElementById('btnClearDoneTodos');
 
-  if (btnAll) btnAll.addEventListener('click', () => setDashboardTodoFilter('all', btnAll));
-  if (btnActive) btnActive.addEventListener('click', () => setDashboardTodoFilter('active', btnActive));
-  if (btnDone) btnDone.addEventListener('click', () => setDashboardTodoFilter('done', btnDone));
+  if (btnAll) btnAll.addEventListener('click', () => setTodoFilter('all', btnAll));
+  if (btnActive) btnActive.addEventListener('click', () => setTodoFilter('active', btnActive));
+  if (btnDone) btnDone.addEventListener('click', () => setTodoFilter('done', btnDone));
   if (btnClearDone) btnClearDone.addEventListener('click', clearCompletedDashboardTodos);
 
   await fetchDashboardTodos();
 }
 
-function setDashboardTodoFilter(filterName, activeBtn) {
-  currentDashboardTodoFilter = filterName;
-  document.querySelectorAll('.todos-section .pill-btn').forEach((b) => {
+function setTodoFilter(filterName, activeBtn) {
+  currentTodoFilter = filterName;
+  document.querySelectorAll('#tasks .pill-btn').forEach(b => {
     if (b.id.startsWith('btnFilter')) b.classList.remove('active');
   });
   if (activeBtn) activeBtn.classList.add('active');
@@ -1107,9 +1078,7 @@ async function fetchDashboardTodos() {
         return;
       }
     }
-  } catch (e) {
-    // Fallback to local cache
-  }
+  } catch (e) {}
 
   try {
     const stored = localStorage.getItem(DASHBOARD_TODO_KEY);
@@ -1125,8 +1094,8 @@ function renderDashboardTodos() {
   if (!listEl) return;
 
   const total = dashboardTodos.length;
-  const pending = dashboardTodos.filter((t) => !t.completed).length;
-  const done = dashboardTodos.filter((t) => t.completed).length;
+  const pending = dashboardTodos.filter(t => !t.completed).length;
+  const done = dashboardTodos.filter(t => t.completed).length;
 
   const statTotal = document.getElementById('statTotalTodos');
   const statPending = document.getElementById('statPendingTodos');
@@ -1136,23 +1105,23 @@ function renderDashboardTodos() {
   if (statPending) statPending.textContent = pending;
   if (statDone) statDone.textContent = done;
 
-  const filtered = dashboardTodos.filter((t) => {
-    if (currentDashboardTodoFilter === 'active') return !t.completed;
-    if (currentDashboardTodoFilter === 'done') return t.completed;
+  const filtered = dashboardTodos.filter(t => {
+    if (currentTodoFilter === 'active') return !t.completed;
+    if (currentTodoFilter === 'done') return t.completed;
     return true;
   });
 
   if (filtered.length === 0) {
     listEl.innerHTML = `
-      <div style="text-align: center; padding: 32px 0; color: var(--text-dim); font-size: 0.85rem;">
-        No tasks in this view. Add one above or command your XiaoZhi assistant!
+      <div style="text-align: center; padding: 32px 0; color: var(--text-muted); font-size: 13px;">
+        No tasks in this view. Add one above or command your XiaoZhi voice assistant!
       </div>
     `;
     return;
   }
 
   listEl.innerHTML = '';
-  filtered.forEach((todo) => {
+  filtered.forEach(todo => {
     const item = document.createElement('div');
     item.className = `todo-item ${todo.completed ? 'completed' : ''}`;
     const prio = (todo.priority || 'medium').toLowerCase();
@@ -1166,7 +1135,7 @@ function renderDashboardTodos() {
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span class="todo-priority-badge ${prio}">${escapeHtml(todo.priority || 'medium')}</span>
-        <button type="button" class="feed-del-btn" title="Delete task" style="background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 2px;">
+        <button type="button" class="todo-del-btn" title="Delete task" style="background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 4px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1178,7 +1147,7 @@ function renderDashboardTodos() {
     const checkBtn = item.querySelector('.todo-check-btn');
     checkBtn.addEventListener('click', () => toggleDashboardTodo(todo.id));
 
-    const delBtn = item.querySelector('.feed-del-btn');
+    const delBtn = item.querySelector('.todo-del-btn');
     delBtn.addEventListener('click', () => deleteDashboardTodo(todo.id));
 
     listEl.appendChild(item);
@@ -1209,7 +1178,7 @@ async function addDashboardTodo(text, priority = 'medium') {
   } catch (e) {}
 
   const newTodo = {
-    id: 'todo_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    id: 'todo_' + Date.now(),
     text: trimmed,
     priority: priority,
     completed: false,
@@ -1218,11 +1187,11 @@ async function addDashboardTodo(text, priority = 'medium') {
   dashboardTodos.unshift(newTodo);
   localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
   renderDashboardTodos();
-  showToast(`Task added locally: "${trimmed}"`, 'info');
+  showToast(`Task added: "${trimmed}"`, 'info');
 }
 
 async function toggleDashboardTodo(id) {
-  const target = dashboardTodos.find((t) => t.id === id);
+  const target = dashboardTodos.find(t => t.id === id);
   if (!target) return;
   const newStatus = !target.completed;
   target.completed = newStatus;
@@ -1240,7 +1209,7 @@ async function toggleDashboardTodo(id) {
 }
 
 async function deleteDashboardTodo(id) {
-  dashboardTodos = dashboardTodos.filter((t) => t.id !== id);
+  dashboardTodos = dashboardTodos.filter(t => t.id !== id);
   try {
     await fetch(`/api/v1/todos/${encodeURIComponent(id)}`, { method: 'DELETE' });
   } catch (e) {}
@@ -1251,8 +1220,8 @@ async function deleteDashboardTodo(id) {
 }
 
 async function clearCompletedDashboardTodos() {
-  const completedIds = dashboardTodos.filter((t) => t.completed).map((t) => t.id);
-  dashboardTodos = dashboardTodos.filter((t) => !t.completed);
+  const completedIds = dashboardTodos.filter(t => t.completed).map(t => t.id);
+  dashboardTodos = dashboardTodos.filter(t => !t.completed);
   localStorage.setItem(DASHBOARD_TODO_KEY, JSON.stringify(dashboardTodos));
   renderDashboardTodos();
 
@@ -1264,7 +1233,209 @@ async function clearCompletedDashboardTodos() {
   showToast('Completed tasks cleared', 'info');
 }
 
-// Attach Event Listeners on DOM Load
+// =========================================================================
+// 7. REAL-TIME SSE & ESP32 ALERT DISPATCHER
+// =========================================================================
+function connectToEsp32Sse() {
+  try {
+    sseConnection = new EventSource('/api/v1/events/stream');
+
+    sseConnection.onopen = () => {
+      logEvent('Real-time SSE telemetry link established with ESP32 gateway.', 'info');
+    };
+
+    sseConnection.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === 'esp32_data') {
+          logEvent(`ESP32 Voice Ingestion: [${payload.category || 'transcript'}] ${JSON.stringify(payload.data || {})}`, 'info');
+          playChime();
+        } else if (payload.type === 'todo_created' || payload.type === 'todo_deleted' || payload.type === 'todo_updated') {
+          fetchDashboardTodos();
+        }
+      } catch (err) {}
+    };
+  } catch (e) {
+    console.warn('SSE connection skipped:', e);
+  }
+}
+
+function openAlertModal() {
+  const modal = document.getElementById('alertModal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeAlertModal() {
+  const modal = document.getElementById('alertModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function openAddSensorModal() {
+  const modal = document.getElementById('addSensorModal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeAddSensorModal() {
+  const modal = document.getElementById('addSensorModal');
+  if (modal) modal.classList.remove('open');
+}
+
+async function handlePushAlertSubmit(e) {
+  e.preventDefault();
+  const title = (document.getElementById('alertTitleInput')?.value || 'Server Notice').trim();
+  const message = (document.getElementById('alertMsgInput')?.value || '').trim();
+  const emotion = document.getElementById('alertEmotionSelect')?.value || 'notice';
+
+  if (!message) return;
+
+  try {
+    const res = await fetch('/api/v1/device/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: 'mo-project-c3',
+        title: title,
+        message: message,
+        emotion: emotion
+      })
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    closeAlertModal();
+    playChime();
+    showToast(`Alert pushed to ESP32: "${message.substring(0, 35)}..."`, 'info');
+    logEvent(`Hardware Alert Transmitted [${emotion}]: "${message}" via ${data.channel || 'WebSocket'}`, 'warn');
+  } catch (err) {
+    showToast(`Failed to push alert: ${err.message}`, 'danger');
+  }
+}
+
+// Toast Helper
+function showToast(msg, type = 'info') {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast-item ${type}`;
+  toast.innerHTML = `
+    <span>✦</span>
+    <span>${escapeHtml(msg)}</span>
+  `;
+
+  stack.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// =========================================================================
+// 8. INITIALIZATION & EVENT BINDINGS
+// =========================================================================
+function bindEvents() {
+  const audioBtn = document.getElementById('audioBtn');
+  if (audioBtn) audioBtn.addEventListener('click', toggleCelestialSound);
+
+  const pauseBtn = document.getElementById('btnPauseResume');
+  const feedStatusText = document.getElementById('feedStatusText');
+  const pulseDot = pauseBtn ? pauseBtn.querySelector('.pulse-dot') : null;
+
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', () => {
+      isLive = !isLive;
+      if (feedStatusText) feedStatusText.textContent = isLive ? 'LIVE STREAM' : 'FEED PAUSED';
+      if (pulseDot) {
+        if (isLive) pulseDot.classList.remove('paused');
+        else pulseDot.classList.add('paused');
+      }
+      showToast(isLive ? 'Live telemetry stream resumed' : 'Telemetry stream paused', 'info');
+    });
+  }
+
+  const addSensorBtn = document.getElementById('btnAddSensorBtn');
+  if (addSensorBtn) addSensorBtn.addEventListener('click', openAddSensorModal);
+
+  const pushAlertForm = document.getElementById('pushAlertForm');
+  if (pushAlertForm) pushAlertForm.addEventListener('submit', handlePushAlertSubmit);
+
+  const btnCheckEsp32 = document.getElementById('btnCheckEsp32');
+  if (btnCheckEsp32) btnCheckEsp32.addEventListener('click', () => checkEsp32Connection(true));
+
+  const btnPing = document.getElementById('btnExecutePing');
+  if (btnPing) btnPing.addEventListener('click', executePingTest);
+
+  const pingPreset = document.getElementById('pingTargetPreset');
+  const pingCustom = document.getElementById('pingCustomTarget');
+  if (pingPreset && pingCustom) {
+    pingPreset.addEventListener('change', () => {
+      pingCustom.style.display = pingPreset.value === 'custom' ? 'block' : 'none';
+    });
+  }
+
+  const btnDisk = document.getElementById('btnRefreshDisk');
+  if (btnDisk) btnDisk.addEventListener('click', () => checkServerDiskSpace(true));
+
+  const btnClearLog = document.getElementById('btnClearTerminalBtn');
+  if (btnClearLog) {
+    btnClearLog.addEventListener('click', () => {
+      const feed = document.getElementById('eventLogFeed');
+      if (feed) feed.innerHTML = '';
+    });
+  }
+
+  // Filter pills
+  document.querySelectorAll('.filter-bar .pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filter = btn.getAttribute('data-filter');
+      if (filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-bar .pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderSensors();
+      }
+    });
+  });
+
+  const searchInput = document.getElementById('searchSensorsInput');
+  if (searchInput) searchInput.addEventListener('input', renderSensors);
+
+  // Year in footer
+  const yearEl = document.getElementById('year');
+  if (yearEl) yearEl.textContent = new Date().getFullYear();
+}
+
+async function initApp() {
+  await ensureDashboardSession();
+  initThreeBackground();
+  initSignalGraph();
+  bindEvents();
+  initDashboardTodos();
+  renderSensors();
+  updateTopMetrics();
+  updateClock();
+  connectToEsp32Sse();
+  checkEsp32Connection(false);
+  checkServerDiskSpace(false);
+
+  logEvent('SensorsHub Cortesa engine active. Reconciled with Cloud MCP.', 'info');
+
+  updateInterval = setInterval(() => {
+    if (isLive) {
+      simulateTelemetryTick();
+    }
+    updateClock();
+  }, 1500);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });

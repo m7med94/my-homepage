@@ -3,154 +3,158 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SensorsHub — AeroMatrix 4.0 Telemetry & Command Matrix</title>
+    <title>SensorsHub — Intelligence, mapped to every signal you own.</title>
     <meta
       name="description"
-      content="Real-time telemetry console, environmental sensor tracking, server diagnostics, and AI-driven IoT analytics dashboard."
+      content="Real-time cosmic telemetry console, XiaoZhi ESP32 hardware hub, environmental sensor fleet, and AI-driven IoT control matrix."
     />
     <!-- Anti-cache meta headers -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
 
-    <!-- Fonts -->
+    <!-- Google Fonts: Cormorant Garamond, Inter, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=4.0.0" />
+    <link rel="stylesheet" href="styles.css?v=5.0.0" />
+
+    <!-- Three.js for 3D Translucent Humanoid Point Cloud & Cosmic Field -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   </head>
   <body>
-    <!-- Background Ambient Glow Orbs -->
-    <div class="ambient-glow glow-1"></div>
-    <div class="ambient-glow glow-2"></div>
-    <div class="ambient-glow glow-3"></div>
+    <!-- Fullscreen 3D Translucent Humanoid & Cosmic Particle Canvas -->
+    <canvas id="webglCanvas"></canvas>
+    <div class="space-vignette"></div>
 
-    <!-- Flight Deck Topbar Navigation -->
-    <header class="topbar">
-      <div class="container nav-content">
+    <div class="app-shell">
+      <!-- Navbar -->
+      <header class="nav interactive-layer">
         <a href="index.html" class="brand">
-          <div class="brand-badge">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-              <polyline points="2 17 12 22 22 17"></polyline>
-              <polyline points="2 12 12 17 22 12"></polyline>
-            </svg>
-          </div>
-          <div>
-            <span class="brand-title">Sensors<strong>Hub</strong></span>
-            <span class="brand-tag">AeroMatrix 4.0 // Live Telemetry</span>
-          </div>
+          <svg class="brand-icon" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83" stroke-linecap="round"/>
+          </svg>
+          <span class="brand-name">Sensors<span>Hub</span></span>
         </a>
 
-        <nav class="nav-links">
+        <nav class="nav-pill-menu">
           <a href="#overview" class="nav-link active">⚡ Telemetry Matrix</a>
-          <a href="esp32-assistant.html" class="nav-link" style="color: var(--cyan);">📡 Device Events</a>
-          <a href="serverai.html" class="nav-link" style="color: var(--violet);">🤖 ServerAI Copilot</a>
+          <a href="#signals" class="nav-link">✦ Signal Graph</a>
+          <a href="esp32-assistant.html" class="nav-link">📡 Device Events</a>
+          <a href="serverai.html" class="nav-link">🤖 ServerAI Copilot</a>
+          <a href="#tasks" class="nav-link">📋 Tasks</a>
         </nav>
 
         <div class="nav-actions">
-          <button class="action-btn" id="btnPauseResume" title="Pause / Resume Live Feed">
+          <button class="btn-audio" id="audioBtn" title="Toggle Celestial Ambient Sound">
+            <span id="audioIcon">♫</span>
+            <span id="audioText">Sound</span>
+          </button>
+          <button class="btn-stream" id="btnPauseResume" title="Pause / Resume Live Feed">
             <span class="pulse-dot"></span>
             <span id="feedStatusText">LIVE STREAM</span>
           </button>
-          <button class="action-btn secondary" id="btnAddSensorBtn">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span>Add Node</span>
+          <button class="btn-ghost-pill" id="btnAddSensorBtn" style="padding: 7px 16px; font-size: 12px;">
+            + Node
           </button>
           <div class="clock-badge" id="timeDisplay">--:--:--</div>
         </div>
-      </div>
-    </header>
+      </header>
 
-    <!-- Main Content -->
-    <main class="container">
-      <!-- Top Overview Stats -->
-      <section id="overview" style="margin-bottom: 28px;">
-        <div class="hero-bar">
-          <div>
-            <h1 class="page-title">Command &amp; Telemetry Matrix</h1>
-            <p class="page-subtitle">Continuous high-frequency telemetry from XiaoZhi ESP32 hardware, environmental sensor fleet, and Linux server infrastructure.</p>
-          </div>
-        </div>
+      <!-- HERO SECTION -->
+      <main class="hero" id="overview">
+        <!-- Left Narrative Column -->
+        <div class="hero-left interactive-layer">
+          <h1 class="hero-heading">
+            Intelligence, mapped to every signal you own.
+          </h1>
 
-        <!-- Metric Ribbons -->
-        <div class="metrics-strip">
-          <div class="metric-card" style="--c: var(--amber);">
-            <div class="metric-icon-wrap">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            </div>
-            <div class="metric-body">
-              <span class="metric-label">Online Fleet Nodes</span>
-              <div class="metric-val-row">
-                <span class="metric-num" id="statOnlineSensors">0</span>
-                <span class="metric-sub" id="statTotalSensors">/ 0 total</span>
-              </div>
-            </div>
-          </div>
+          <div class="hero-bottom-block">
+            <p class="hero-subtext">
+              The continuous intelligence layer between XiaoZhi ESP32 hardware, IoT fleet telemetry, and automated server reasoning.
+            </p>
 
-          <div class="metric-card" style="--c: #ff7b72;">
-            <div class="metric-icon-wrap">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
-            </div>
-            <div class="metric-body">
-              <span class="metric-label">Mean Temperature</span>
-              <div class="metric-val-row">
-                <span class="metric-num" id="statAvgTemp">--</span>
-                <span class="metric-unit">°C</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="metric-card" style="--c: var(--cyan);">
-            <div class="metric-icon-wrap">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
-            </div>
-            <div class="metric-body">
-              <span class="metric-label">Avg Humidity</span>
-              <div class="metric-val-row">
-                <span class="metric-num" id="statAvgHumidity">--</span>
-                <span class="metric-unit">%</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="metric-card" style="--c: var(--emerald);">
-            <div class="metric-icon-wrap">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
-            </div>
-            <div class="metric-body">
-              <span class="metric-label">System Health</span>
-              <div class="metric-val-row">
-                <span class="metric-num text-success" id="statSystemHealth">Optimal</span>
-              </div>
+            <div class="hero-cta-group">
+              <button class="btn-white" id="btnHeroSendAlert" onclick="openAlertModal()">
+                Push Device Alert <span class="btn-dot"></span>
+              </button>
+              <a href="#signals" class="btn-ghost-pill">
+                Explore Signal Graph <span>↳</span>
+              </a>
             </div>
           </div>
         </div>
 
-        <!-- Local Network Tools & Server Health Overview Card -->
-        <div class="network-tools-card" id="networkToolsOverview">
-          <div class="network-tools-header">
-            <div class="diag-title-row">
-              <div class="diag-icon" style="--c: var(--cyan);">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-              </div>
-              <div>
-                <h3 class="network-tools-title">Local Network Tools &amp; Hardware Hub</h3>
-                <p class="network-tools-subtitle">Ping local devices, inspect storage capacity, and push instant OLED alerts to ESP32 hardware.</p>
-              </div>
+        <!-- Right Narrative Column -->
+        <div class="hero-right interactive-layer">
+          <div class="hero-metrics-copy">
+            <div class="hero-metric-chip">
+              <span>ACTIVE NODES</span>
+              <b id="topTotalNodes">7 / 7 Online</b>
+            </div>
+            <div class="hero-metric-chip">
+              <span>FLEET MEAN TEMP</span>
+              <b id="topAvgTemp">22.4 °C</b>
+            </div>
+            <div class="hero-metric-chip">
+              <span>AVG HUMIDITY</span>
+              <b id="topAvgHumidity">48 %</b>
+            </div>
+            <div class="hero-metric-chip">
+              <span>SYSTEM HEALTH</span>
+              <b id="topAlertCount" style="color: var(--emerald);">100% NOMINAL</b>
+            </div>
+          </div>
+
+          <div class="hero-editorial-quote">
+            <h3>
+              Reconciled in real-time <em>for teams who ask why.</em>
+            </h3>
+          </div>
+        </div>
+
+        <!-- Interactive 3D Bust Action Hint -->
+        <div class="bust-hint-badge interactive-layer" onclick="triggerQuantumPulse()">
+          <span>✦</span>
+          <span>CLICK TO DISPERSE QUANTUM LATTICE</span>
+        </div>
+      </main>
+
+      <!-- SECTION 1: INTERACTIVE UNIFIED SIGNAL GRAPH & HARDWARE HUB -->
+      <section class="section-graph interactive-layer" id="signals">
+        <div class="section-header">
+          <span class="section-tag">01 // Unified Signal Topology</span>
+          <h2 class="section-title">Every telemetry stream, unified into a living topological network.</h2>
+          <p class="section-desc">
+            Drag and interact with live incoming signal streams. SensorsHub reconciles XiaoZhi ESP32 voice events, ambient sensors, SQLite WAL logs, and Cloud MCP tools in real time.
+          </p>
+        </div>
+
+        <div class="graph-container">
+          <div class="graph-telemetry-overlay">
+            <span>GRAPH NODES: <b id="graphNodesCount">9 ACTIVE</b></span>
+            <span>RECONCILIATION LATENCY: <b id="graphLatency">14ms</b></span>
+            <span>GATEWAY: <b>XIAOZHI CLOUD MCP ONLINE</b></span>
+          </div>
+          <canvas id="signalGraphCanvas"></canvas>
+        </div>
+
+        <!-- Hardware & Local Network Diagnostics Deck -->
+        <div class="hardware-hub-panel">
+          <div class="hardware-hub-header">
+            <div>
+              <h3 class="hardware-hub-title">Hardware Mission &amp; Network Hub</h3>
+              <p class="hardware-hub-subtitle">Real-time local network diagnostics, ESP32 status verification, and instant OLED push alerts.</p>
             </div>
             <div class="net-status-badge-wrap">
-              <span class="badge-status" id="esp32ConnBadge">ESP32: Checking...</span>
-              <button class="pill-btn" id="btnRefreshNetTools" title="Refresh network & disk stats">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-                <span>Refresh</span>
-              </button>
+              <span class="badge-status" id="esp32Badge">
+                <span class="pulse-dot"></span>
+                <span id="esp32StatusText">ESP32 Online (GCP)</span>
+              </span>
             </div>
           </div>
 
@@ -158,230 +162,252 @@
             <!-- Action 1: ESP32 Hardware Status -->
             <div class="net-action-panel">
               <div class="net-panel-head">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
-                <span>ESP32 Hardware Client</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-core)" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                <span>XiaoZhi ESP32 Client</span>
               </div>
-              <div class="net-meta-line" id="esp32StatusVal">State: Checking...</div>
-              <div class="net-meta-line" id="esp32LastSeenText">Last seen: --</div>
-              <div class="net-meta-line" id="esp32MetaText">Node: mo-project-c3</div>
+              <div class="net-meta-line" id="esp32MetaText">IP: 192.168.1.105 | RSSI: -54 dBm</div>
               <div class="net-btn-group">
-                <button class="btn-cyber" id="btnCheckEsp32">Check Device</button>
-                <button class="btn-cyber cyan" id="btnSendEsp32Alert" title="Push a custom notification alert directly to ESP32 OLED & speaker">Send Alert</button>
+                <button type="button" class="btn-cyber primary" id="btnCheckEsp32">Check Device</button>
+                <button type="button" class="btn-cyber amber" id="btnTriggerAlertModal" onclick="openAlertModal()">Send Alert</button>
               </div>
             </div>
 
-            <!-- Action 2: Server Storage & Disk -->
+            <!-- Action 2: ICMP Network Ping -->
             <div class="net-action-panel">
               <div class="net-panel-head">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                <span>Server Storage Usage</span>
-              </div>
-              <div class="net-meta-line" id="diskFreeVal">Storage: Checking...</div>
-              <div class="net-meta-line" id="diskPercentText">Percent: --</div>
-              <div class="net-meta-line" id="diskMetaText">Capacity: --</div>
-              <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 4px; margin-top: 4px; overflow: hidden;">
-                <div id="diskProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--cyan), var(--violet)); transition: width 0.4s ease;"></div>
-              </div>
-              <div class="net-btn-group" style="margin-top: 8px;">
-                <button class="btn-cyber" id="btnCheckDisk">Check Disk</button>
-              </div>
-            </div>
-
-            <!-- Action 3: Network Ping Tool -->
-            <div class="net-action-panel">
-              <div class="net-panel-head">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
-                <span>Network Ping Tool</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-core)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                <span>Network Ping Latency</span>
               </div>
               <div class="ping-input-row">
-                <select class="cyber-select" id="pingPresetSelect" style="flex: 1;">
-                  <option value="127.0.0.1">localhost (127.0.0.1)</option>
-                  <option value="1.1.1.1">Cloudflare (1.1.1.1)</option>
+                <select class="cyber-select" id="pingTargetPreset" style="padding: 6px 12px; font-size: 11px;">
+                  <option value="127.0.0.1">Local Gateway (127.0.0.1)</option>
+                  <option value="1.1.1.1">Cloudflare DNS (1.1.1.1)</option>
                   <option value="8.8.8.8">Google DNS (8.8.8.8)</option>
-                  <option value="esp32">ESP32 Device Node</option>
-                  <option value="custom">Custom Target...</option>
+                  <option value="custom">Custom IP / Host...</option>
                 </select>
-                <input type="text" class="cyber-input" id="pingCustomInput" placeholder="192.168.1.1" style="display: none; flex: 1;" />
+                <input type="text" class="cyber-input" id="pingCustomTarget" placeholder="IP / Host" style="display:none; width: 100px; padding: 6px 10px; font-size: 11px;" />
+                <button type="button" class="btn-cyber" id="btnExecutePing">Ping</button>
               </div>
-              <div id="pingResultTag" class="net-meta-line" style="min-height: 20px;">Ready</div>
+              <div class="net-meta-line" id="pingResultLine">Latency: <span class="ping-result-tag online" id="pingValTag">-- ms</span></div>
+            </div>
+
+            <!-- Action 3: Linux Server Disk Usage -->
+            <div class="net-action-panel">
+              <div class="net-panel-head">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-core)" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                <span>Server Storage Usage</span>
+              </div>
+              <div class="net-meta-line" id="diskUsageMeta">Used: 12.4 GB / 48.0 GB (26%)</div>
+              <div class="sensor-bar-wrap">
+                <div class="sensor-bar-progress" id="diskProgressBar" style="width: 26%;"></div>
+              </div>
               <div class="net-btn-group">
-                <button class="btn-cyber" id="btnRunPing">Run Ping</button>
+                <button type="button" class="btn-cyber" id="btnRefreshDisk">Refresh Disk</button>
               </div>
             </div>
           </div>
 
-          <!-- Network Query Response Output Box -->
-          <div class="net-query-response" id="netQueryResponse" style="display: none;">
-            <div class="net-response-top">
-              <span class="net-response-title" id="netResponseTitle">Output Log</span>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span class="net-response-time" id="netResponseTime">--:--:--</span>
-                <button class="pill-btn" id="btnCloseNetResponse" style="padding: 2px 8px; font-size: 0.72rem;">Close</button>
-              </div>
+          <!-- Network Output Box -->
+          <div class="net-query-response" id="netQueryResponseBox" style="display:none; margin-top: 20px; background: rgba(4,7,14,0.9); border: 1px solid var(--panel-border); border-radius: 12px; padding: 14px 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-bright); font-weight: 600;">// NETWORK_TOOL_EXECUTION</span>
+              <span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);" id="netQueryTime">Just now</span>
             </div>
-            <pre class="net-response-code" id="netResponseText">Executing command...</pre>
+            <pre style="font-family: var(--font-mono); font-size: 12px; color: var(--text-silver); margin-top: 8px; white-space: pre-wrap;" id="netQueryText">Executing...</pre>
           </div>
         </div>
       </section>
 
-      <!-- Two-Column Main Layout: Sensor Matrix & Diagnostics Tower -->
-      <div class="dashboard-grid-2col">
-        <!-- Left: Sensor Nodes Grid & Filter -->
-        <div class="glass-panel">
-          <div class="panel-header">
-            <h2 class="panel-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-              <span>Live Sensor Fleet Matrix</span>
-            </h2>
-            <div class="filter-bar">
-              <input type="text" class="cyber-input" id="sensorSearchInput" placeholder="Filter sensors..." style="min-width: 140px;" />
-              <select class="cyber-select" id="sensorSortSelect">
-                <option value="name">Sort by Name</option>
-                <option value="value">Sort by Value</option>
-                <option value="status">Sort by Status</option>
-              </select>
-              <button class="pill-btn" id="btnExportData" title="Export CSV Data">Export CSV</button>
-              <button class="pill-btn" id="btnTriggerAlert" title="Simulate Sensor Alert" style="color: var(--amber);">Simulate Alert</button>
-            </div>
-          </div>
-
-          <div class="sensors-grid" id="sensorsGrid">
-            <!-- Rendered dynamically by script.js -->
-          </div>
+      <!-- SECTION 2: LIVE TELEMETRY FLEET & EVENT STREAM -->
+      <section class="section-telemetry interactive-layer" id="telemetry">
+        <div class="section-header">
+          <span class="section-tag">02 // Live Telemetry Fleet</span>
+          <h2 class="section-title">Environmental sensors &amp; node monitors.</h2>
+          <p class="section-desc">Continuous telemetry signals with canvas sparkline trends, status tags, and dynamic level tracking.</p>
         </div>
 
-        <!-- Right: System Resources & Real-Time Event Terminal -->
-        <div style="display: flex; flex-direction: column; gap: 24px;">
-          <!-- Diagnostics Gauges -->
-          <div class="glass-panel">
-            <div class="panel-header">
-              <h2 class="panel-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                <span>System Diagnostics</span>
-              </h2>
-              <span class="panel-tag">// HOST_HEALTH</span>
+        <div class="dashboard-2col">
+          <!-- Left Column: Sensors Grid -->
+          <div>
+            <div class="filter-bar">
+              <button class="pill-btn active" data-filter="all">All Nodes (7)</button>
+              <button class="pill-btn" data-filter="temp">Temperature</button>
+              <button class="pill-btn" data-filter="humidity">Humidity</button>
+              <button class="pill-btn" data-filter="air">Air Quality</button>
+              <button class="pill-btn" data-filter="power">Power</button>
+              <input type="text" class="cyber-input" id="searchSensorsInput" placeholder="Search node or location..." style="max-width: 180px; padding: 6px 14px; font-size: 11px;" />
             </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-              <div class="net-action-panel" style="padding: 14px;">
-                <span class="metric-label">Memory Usage</span>
-                <div style="font-size: 1.4rem; font-weight: 700; font-family: var(--font-mono); color: #fff; margin: 4px 0;" id="memValText">-- %</div>
-                <div style="font-size: 0.75rem; color: var(--text-dim);" id="memUsageText">-- MB / -- MB</div>
-                <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 4px; margin-top: 8px; overflow: hidden;">
-                  <div id="memGauge" style="height: 100%; width: 0%; background: var(--cyan); transition: width 0.4s ease;"></div>
-                </div>
-              </div>
 
-              <div class="net-action-panel" style="padding: 14px;">
-                <span class="metric-label">Network Latency</span>
-                <div style="font-size: 1.4rem; font-weight: 700; font-family: var(--font-mono); color: #fff; margin: 4px 0;" id="netValText">-- ms</div>
-                <div style="font-size: 0.75rem; color: var(--text-dim);" id="netStatusText">Checking ping...</div>
-                <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 4px; margin-top: 8px; overflow: hidden;">
-                  <div id="netGauge" style="height: 100%; width: 0%; background: var(--emerald); transition: width 0.4s ease;"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Real-Time Event Stream Terminal -->
-          <div class="glass-panel" style="flex: 1;">
-            <div class="panel-header">
-              <h2 class="panel-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                <span>Live Event Stream</span>
-              </h2>
-              <button class="pill-btn" id="btnClearLogs" style="font-size: 0.72rem;">Clear</button>
-            </div>
-            <div class="terminal-feed" id="eventStreamContainer">
+            <div class="sensors-grid" id="sensorsGrid">
               <!-- Rendered dynamically by script.js -->
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- Cyber To-Do & Task Management Terminal -->
-      <section class="todos-section glass-panel">
-        <div class="panel-header">
-          <div class="diag-title-row">
-            <div class="diag-icon" style="--c: var(--violet);">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            </div>
+          <!-- Right Column: Diagnostics & Event Stream -->
+          <div class="diagnostics-panel">
             <div>
-              <h2 class="panel-title">Persistent Task &amp; To-Do Terminal</h2>
-              <p class="network-tools-subtitle">Manage tasks locally or command your XiaoZhi ESP32 Voice Assistant to add/complete To-Dos via Cloud MCP.</p>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="font-family: var(--font-serif); font-size: 22px; color: #fff; font-weight: 400;">System Diagnostics</h4>
+                <span class="badge-status" style="font-size: 10px;">4 Cores Active</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px;">
+                <div style="background: rgba(4,7,14,0.7); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--panel-border);">
+                  <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); display: block;">SERVER RAM</span>
+                  <span style="font-family: var(--font-mono); font-size: 18px; color: #fff; font-weight: 600;" id="ramGaugeText">1.2 / 4.0 GB</span>
+                  <div class="sensor-bar-wrap" style="margin-top: 6px;">
+                    <div class="sensor-bar-progress" id="ramBar" style="width: 30%;"></div>
+                  </div>
+                </div>
+                <div style="background: rgba(4,7,14,0.7); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--panel-border);">
+                  <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); display: block;">LOOP LATENCY</span>
+                  <span style="font-family: var(--font-mono); font-size: 18px; color: var(--cyan-bright); font-weight: 600;" id="latencyGaugeText">14 ms</span>
+                  <div class="sensor-bar-wrap" style="margin-top: 6px;">
+                    <div class="sensor-bar-progress" id="latencyBar" style="width: 14%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Oscilloscope Terminal Feed -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="font-family: var(--font-serif); font-size: 22px; color: #fff; font-weight: 400;">Live Oscilloscope Stream</h4>
+                <button type="button" class="btn-cyber" id="btnClearTerminalBtn" style="padding: 4px 10px; font-size: 10px;">Clear</button>
+              </div>
+              <div class="terminal-feed" id="eventLogFeed">
+                <!-- Live events appended here -->
+              </div>
             </div>
           </div>
-          <div class="todos-stats-bar">
-            <div class="todo-stat-chip">Total: <strong id="statTotalTodos">0</strong></div>
-            <div class="todo-stat-chip">Pending: <strong id="statPendingTodos" style="color: var(--amber);">0</strong></div>
-            <div class="todo-stat-chip">Done: <strong id="statDoneTodos" style="color: var(--emerald);">0</strong></div>
-          </div>
-        </div>
-
-        <div class="todo-input-bar">
-          <input type="text" class="todo-input" id="newTodoInput" placeholder="Add a new task (e.g. 'Calibrate ESP32 DHT22 sensor', 'Backup database')..." autocomplete="off" />
-          <select class="cyber-select" id="todoPrioritySelect">
-            <option value="low">Low Priority</option>
-            <option value="medium" selected>Medium Priority</option>
-            <option value="high">High Priority</option>
-          </select>
-          <button class="btn-cyber primary" id="btnAddTodo">Add Task</button>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-          <div style="display: flex; gap: 8px;">
-            <button class="pill-btn active" id="btnFilterAll">All</button>
-            <button class="pill-btn" id="btnFilterActive">Active</button>
-            <button class="pill-btn" id="btnFilterDone">Completed</button>
-          </div>
-          <button class="pill-btn" id="btnClearDoneTodos" style="color: var(--rose);">Clear Completed</button>
-        </div>
-
-        <div class="todos-list" id="todosList">
-          <!-- Rendered dynamically by script.js -->
         </div>
       </section>
-    </main>
 
-    <!-- Add Sensor Node Modal -->
-    <div class="modal-overlay" id="addSensorModal">
-      <div class="modal-dialog">
-        <div class="panel-header">
-          <h3 class="panel-title">Add Sensor Node</h3>
-          <button class="pill-btn" id="btnCloseModal">✕</button>
+      <!-- SECTION 3: SYNCHRONIZED TO-DO TASK TERMINAL -->
+      <section class="section-todos interactive-layer" id="tasks">
+        <div class="todos-container">
+          <div class="todos-header">
+            <div>
+              <span class="section-tag" style="margin-bottom: 6px;">03 // Task Coordination</span>
+              <h3 style="font-family: var(--font-serif); font-size: 32px; color: #fff; font-weight: 400;">Synchronized Task Terminal</h3>
+              <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Tasks synced in real time across the web dashboard and XiaoZhi ESP32 voice assistant.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="todo-stat-chip">Total: <b id="statTotalTodos" style="color:#fff;">0</b></span>
+              <span class="todo-stat-chip">Pending: <b id="statPendingTodos" style="color:var(--amber);">0</b></span>
+              <span class="todo-stat-chip">Done: <b id="statDoneTodos" style="color:var(--emerald);">0</b></span>
+            </div>
+          </div>
+
+          <!-- Add Task Input Bar -->
+          <div class="todo-input-bar">
+            <input type="text" class="cyber-input" id="newTodoInput" placeholder="Add a new task or speak to your XiaoZhi ESP32..." />
+            <select class="cyber-select" id="todoPrioritySelect">
+              <option value="high">High Priority</option>
+              <option value="medium" selected>Normal Priority</option>
+              <option value="low">Routine / Low</option>
+            </select>
+            <button type="button" class="btn-white" id="btnAddTodo">Add Task</button>
+          </div>
+
+          <!-- Filter & Clear Controls -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <div class="filter-bar">
+              <button class="pill-btn active" id="btnFilterAll">All Tasks</button>
+              <button class="pill-btn" id="btnFilterActive">Pending</button>
+              <button class="pill-btn" id="btnFilterDone">Completed</button>
+            </div>
+            <button type="button" class="btn-cyber" id="btnClearDoneTodos" style="font-size: 11px;">Clear Completed</button>
+          </div>
+
+          <!-- Tasks List -->
+          <div class="todos-list" id="todosList">
+            <!-- Dynamic task items -->
+          </div>
         </div>
-        <form id="addSensorForm" style="display: flex; flex-direction: column; gap: 14px;">
+      </section>
+
+      <!-- FOOTER -->
+      <footer class="footer interactive-layer">
+        <div>
+          <span>© <span id="year"></span> SensorsHub Core // Reconciled with XiaoZhi Cloud MCP.</span>
+        </div>
+        <ul class="footer-links">
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#signals">Signal Graph</a></li>
+          <li><a href="esp32-assistant.html">Device Events</a></li>
+          <li><a href="serverai.html">ServerAI Copilot</a></li>
+          <li><a href="#status">System Status: 100%</a></li>
+        </ul>
+      </footer>
+    </div>
+
+    <!-- PUSH DEVICE ALERT MODAL -->
+    <div class="modal-backdrop" id="alertModal" onclick="if(event.target===this) closeAlertModal()">
+      <div class="modal-card">
+        <h3>Push ESP32 Device Alert</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+          Transmit custom alert notifications directly to the ESP32 OLED screen and speaker via WebSocket or MQTT fallback.
+        </p>
+        <form id="pushAlertForm" style="display: grid; gap: 14px;">
           <div>
-            <label class="metric-label">Node Identifier</label>
-            <input type="text" class="cyber-input" id="sensorName" placeholder="e.g. Living Room DHT22" style="width: 100%;" required />
+            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">ALERT TITLE</label>
+            <input type="text" id="alertTitleInput" class="cyber-input" value="Server Notice" required style="width: 100%; border-radius: 8px;" />
           </div>
           <div>
-            <label class="metric-label">Measurement Type</label>
-            <select class="cyber-select" id="sensorType" style="width: 100%;">
-              <option value="temperature">Temperature (°C)</option>
-              <option value="humidity">Humidity (%)</option>
-              <option value="co2">Air Quality / CO2 (ppm)</option>
-              <option value="pressure">Pressure (hPa)</option>
-              <option value="voltage">Battery Voltage (V)</option>
+            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">MESSAGE CONTENT</label>
+            <textarea id="alertMsgInput" class="cyber-input" rows="3" placeholder="Enter message to display and speak on ESP32..." required style="width: 100%; border-radius: 8px; resize: none;"></textarea>
+          </div>
+          <div>
+            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">EMOTION / STATUS</label>
+            <select id="alertEmotionSelect" class="cyber-select" style="width: 100%; border-radius: 8px;">
+              <option value="happy">Happy (Gentle Chime)</option>
+              <option value="notice" selected>Notice (Neutral Alert)</option>
+              <option value="warning">Warning (Urgent Beep)</option>
+              <option value="confused">Question (Rising Tone)</option>
             </select>
           </div>
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+            <button type="button" class="btn-ghost-pill" onclick="closeAlertModal()">Cancel</button>
+            <button type="submit" class="btn-white">Transmit Alert <span class="btn-dot"></span></button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ADD SENSOR MODAL -->
+    <div class="modal-backdrop" id="addSensorModal" onclick="if(event.target===this) closeAddSensorModal()">
+      <div class="modal-card">
+        <h3>Deploy Telemetry Node</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+          Register a new IoT hardware node, ambient monitor, or virtual sensor telemetry channel.
+        </p>
+        <form id="addSensorForm" style="display: grid; gap: 14px;">
           <div>
-            <label class="metric-label">Location / Zone</label>
-            <input type="text" class="cyber-input" id="sensorLocation" placeholder="e.g. Master Bedroom" style="width: 100%;" required />
+            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">NODE NAME</label>
+            <input type="text" id="sensorNameInput" class="cyber-input" placeholder="e.g. Roof Weather Station" required style="width: 100%; border-radius: 8px;" />
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">LOCATION</label>
+            <input type="text" id="sensorLocInput" class="cyber-input" placeholder="e.g. Outdoor Deck" required style="width: 100%; border-radius: 8px;" />
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
-              <label class="metric-label">Min Normal</label>
-              <input type="number" class="cyber-input" id="sensorMin" value="18" style="width: 100%;" />
+              <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">TYPE</label>
+              <select id="sensorTypeSelect" class="cyber-select" style="width: 100%; border-radius: 8px;">
+                <option value="temp">Temperature</option>
+                <option value="humidity">Humidity</option>
+                <option value="air">Air Quality</option>
+                <option value="power">Power</option>
+              </select>
             </div>
             <div>
-              <label class="metric-label">Max Normal</label>
-              <input type="number" class="cyber-input" id="sensorMax" value="30" style="width: 100%;" />
+              <label style="font-family: var(--font-mono); font-size: 11px; color: var(--cyan-core); display: block; margin-bottom: 6px;">UNIT</label>
+              <input type="text" id="sensorUnitInput" class="cyber-input" value="°C" required style="width: 100%; border-radius: 8px;" />
             </div>
           </div>
-          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-            <button type="button" class="pill-btn" id="btnCancelModal">Cancel</button>
-            <button type="submit" class="btn-cyber primary">Save Node</button>
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+            <button type="button" class="btn-ghost-pill" onclick="closeAddSensorModal()">Cancel</button>
+            <button type="submit" class="btn-white">Save Node <span class="btn-dot"></span></button>
           </div>
         </form>
       </div>
@@ -390,24 +416,6 @@
     <!-- Notification Toast Container -->
     <div class="toast-stack" id="toastStack"></div>
 
-    <!-- Footer -->
-    <footer class="site-footer">
-      <div class="container footer-content">
-        <div class="brand">
-          <div class="brand-badge small">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon></svg>
-          </div>
-          <span>Sensors<strong>Hub</strong> AeroMatrix</span>
-        </div>
-        <p class="footer-copy">© <span id="year"></span> SensorsHub Engine. Connected to Home Assistance Core &amp; XiaoZhi Cloud MCP.</p>
-        <div class="footer-links">
-          <a href="#overview">Overview</a>
-          <a href="esp32-assistant.html">Device Events</a>
-          <a href="serverai.html">ServerAI</a>
-        </div>
-      </div>
-    </footer>
-
-    <script src="script.js?v=4.0.0"></script>
+    <script src="script.js?v=5.0.0"></script>
   </body>
 </html>
