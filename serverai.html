@@ -25,6 +25,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <style>
+      .app-shell {
+        pointer-events: auto !important;
+      }
+      #webglCanvas {
+        pointer-events: none !important;
+      }
+      .copilot-grid, .chat-sidebar, .chat-main, .chat-input-area, .cyber-input, .btn-white, .btn-mic {
+        pointer-events: auto !important;
+        position: relative;
+        z-index: 20;
+      }
       .copilot-grid {
         display: grid;
         grid-template-columns: 320px 1fr;
@@ -331,13 +342,13 @@
 
             <!-- Input Bar -->
             <div class="chat-input-area">
-              <form id="chatForm" class="chat-input-row">
+              <form id="chatForm" class="chat-input-row" onsubmit="event.preventDefault(); sendMessage();">
                 <button type="button" class="btn-mic" id="btnMic" title="Voice Input (Speech-to-Text)">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                 </button>
-                <input type="text" class="cyber-input" id="userInput" placeholder="Ask anything about sensors, tasks, or dispatch a voice command..." autocomplete="off" />
-                <button type="submit" class="btn-white" style="padding: 10px 24px; font-size: 13px;">
-                  Send <span class="btn-dot"></span>
+                <input type="text" class="cyber-input" id="userInput" placeholder="Ask Sora anything or teach a new memory..." autocomplete="off" />
+                <button type="button" id="btnSend" class="btn-white" onclick="sendMessage()" style="padding: 10px 24px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                  <span id="btnSendText">Send</span> <span class="btn-dot" id="btnSendDot"></span>
                 </button>
               </form>
             </div>
@@ -362,10 +373,7 @@
     <div class="toast-stack" id="toastStack"></div>
 
     <script>
-      const messagesBox = document.getElementById('messagesBox');
-      const userInput = document.getElementById('userInput');
-      const chatForm = document.getElementById('chatForm');
-      const btnMic = document.getElementById('btnMic');
+      let isSending = false;
 
       async function ensureDashboardSession() {
         try {
@@ -379,13 +387,16 @@
       }
 
       function sendDirective(text) {
-        if (userInput) {
-          userInput.value = text;
-          chatForm.dispatchEvent(new Event('submit'));
+        const input = document.getElementById('userInput');
+        if (input) {
+          input.value = text;
+          sendMessage();
         }
       }
 
       function appendMessage(role, text) {
+        const box = document.getElementById('messagesBox');
+        if (!box) return;
         const row = document.createElement('div');
         row.className = `msg-row ${role}`;
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -396,23 +407,34 @@
             <div class="msg-bubble">${escapeHtml(text)}</div>
             <div class="msg-meta">
               <span>${timeStr}</span>
-              ${role === 'assistant' ? '<span>•</span><span>ServerAI</span>' : ''}
+              ${role === 'assistant' ? '<span>•</span><span>Sora</span>' : ''}
             </div>
           </div>
         `;
-        messagesBox.appendChild(row);
-        messagesBox.scrollTop = messagesBox.scrollHeight;
+        box.appendChild(row);
+        box.scrollTop = box.scrollHeight;
       }
 
-      chatForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const text = (userInput.value || '').trim();
+      async function sendMessage() {
+        if (isSending) return;
+        const input = document.getElementById('userInput');
+        const box = document.getElementById('messagesBox');
+        const btnText = document.getElementById('btnSendText');
+        const btnDot = document.getElementById('btnSendDot');
+        const btnSend = document.getElementById('btnSend');
+
+        const text = (input?.value || '').trim();
         if (!text) return;
 
-        userInput.value = '';
+        isSending = true;
+        input.value = '';
         appendMessage('user', text);
 
-        // Placeholder thinking indicator
+        if (btnText) btnText.textContent = 'Thinking...';
+        if (btnDot) btnDot.style.background = 'var(--violet)';
+        if (btnSend) btnSend.disabled = true;
+
+        // Animated thinking bubble
         const thinkingId = 'thinking_' + Date.now();
         const thinkRow = document.createElement('div');
         thinkRow.className = 'msg-row assistant';
@@ -420,29 +442,58 @@
         thinkRow.innerHTML = `
           <div class="msg-avatar">🤖</div>
           <div>
-            <div class="msg-bubble" style="color: var(--text-muted);">Analyzing signals &amp; reasoning...</div>
+            <div class="msg-bubble" style="color: var(--text-muted); font-style: italic;">Sora is reasoning and accessing telemetry...</div>
           </div>
         `;
-        messagesBox.appendChild(thinkRow);
-        messagesBox.scrollTop = messagesBox.scrollHeight;
+        box.appendChild(thinkRow);
+        box.scrollTop = box.scrollHeight;
 
         try {
           const res = await fetch('/api/v1/agent/dispatch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instruction: text, device_id: 'dashboard-web', context: 'serverai_copilot' }),
+            body: JSON.stringify({
+              instruction: text,
+              device_id: 'dashboard-web',
+              context: 'serverai_copilot'
+            }),
           });
 
           const thinkEl = document.getElementById(thinkingId);
           if (thinkEl) thinkEl.remove();
 
-          if (!res.ok) throw new Error(`Server returned ${res.status}`);
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || `HTTP ${res.status}`);
+          }
           const data = await res.json();
           appendMessage('assistant', data.reply || data.summary || 'Instruction completed.');
+
+          // Refresh memory list in case new memories were learned
+          loadSoraMemories();
         } catch (err) {
           const thinkEl = document.getElementById(thinkingId);
           if (thinkEl) thinkEl.remove();
           appendMessage('assistant', `⚠️ Error processing request: ${err.message}`);
+        } finally {
+          isSending = false;
+          if (btnText) btnText.textContent = 'Send';
+          if (btnDot) btnDot.style.background = 'var(--cyan-core)';
+          if (btnSend) btnSend.disabled = false;
+          if (input) input.focus();
+        }
+      }
+
+      // Enter Key listener on userInput
+      document.addEventListener('DOMContentLoaded', () => {
+        const input = document.getElementById('userInput');
+        if (input) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendMessage();
+            }
+          });
         }
       });
 
@@ -455,32 +506,37 @@
         recognition.interimResults = false;
         recognition.lang = 'en-US';
 
+        const btnMic = document.getElementById('btnMic');
         recognition.onstart = () => {
-          btnMic.classList.add('recording');
+          btnMic?.classList.add('recording');
         };
         recognition.onend = () => {
-          btnMic.classList.remove('recording');
+          btnMic?.classList.remove('recording');
         };
         recognition.onresult = (event) => {
           const transcript = event.results[0][0].transcript;
-          if (userInput) {
-            userInput.value = transcript;
-            chatForm.dispatchEvent(new Event('submit'));
+          const input = document.getElementById('userInput');
+          if (input) {
+            input.value = transcript;
+            sendMessage();
           }
         };
-      }
 
-      btnMic.addEventListener('click', () => {
-        if (!recognition) {
-          alert('Speech Recognition is not supported in this browser. Please use Chrome or Edge.');
-          return;
+        btnMic?.addEventListener('click', () => {
+          try {
+            recognition.start();
+          } catch (e) {
+            recognition.stop();
+          }
+        });
+      } else {
+        const btnMic = document.getElementById('btnMic');
+        if (btnMic) {
+          btnMic.addEventListener('click', () => {
+            alert('Speech Recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
+          });
         }
-        try {
-          recognition.start();
-        } catch (e) {
-          recognition.stop();
-        }
-      });
+      }
 
       async function loadSoraMemories() {
         try {
@@ -516,6 +572,19 @@
         } catch (e) {
           alert('Failed to delete memory: ' + e.message);
         }
+      }
+
+      document.getElementById('btnClearChat')?.addEventListener('click', () => {
+        const box = document.getElementById('messagesBox');
+        if (box) {
+          box.innerHTML = '';
+          appendMessage('assistant', 'Session history cleared. How can I assist you?');
+        }
+      });
+
+      function escapeHtml(str) {
+        if (typeof str !== 'string') return str;
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       }
 
       document.addEventListener('DOMContentLoaded', () => {
