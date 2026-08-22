@@ -25,20 +25,20 @@ validate_production_secrets()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Automatically start XiaoZhi Cloud MCP WebSocket Bridge in background
-    mcp_task = None
     try:
-        from backend.mcp_bridge import run_xiaozhi_mcp_bridge, DEFAULT_MCP_URL
-        mcp_url = os.getenv("XIAOZHI_MCP_URL", DEFAULT_MCP_URL)
-        if mcp_url:
-            print(f"[XiaoZhi MCP] Launching background Cloud MCP WebSocket Bridge...")
-            mcp_task = asyncio.create_task(run_xiaozhi_mcp_bridge(mcp_url))
+        from backend.mcp_bridge import gateway_manager
+        print(f"[XiaoZhi MCP] Initializing background Gateway Manager...")
+        await gateway_manager.set_active(True)
     except Exception as e:
         print(f"[XiaoZhi MCP] Startup note: {e}")
 
     yield
 
-    if mcp_task:
-        mcp_task.cancel()
+    try:
+        from backend.mcp_bridge import gateway_manager
+        await gateway_manager.set_active(False)
+    except Exception:
+        pass
 
 # 2. Initialize FastAPI Application
 app = FastAPI(

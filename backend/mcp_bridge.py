@@ -16,6 +16,53 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [Xia
 DEFAULT_MCP_URL = "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEwNDYxNTEsImFnZW50SWQiOjIyNDg3NzAsImVuZHBvaW50SWQiOiJhZ2VudF8yMjQ4NzcwIiwicHVycG9zZSI6Im1jcC1lbmRwb2ludCIsImlhdCI6MTc4NzAxODAzMywiZXhwIjoxODE4NTc1NjMzfQ.JeXHL2NU1Ytm0TgBYI9F2guj4ONjyyb9dU31dVyadKWGnQuNjT8ATrjPueiXLOr3CkC53Vrhj4f-KRVEltB-4Q"
 
 # =========================================================================================
+# GATEWAY ACTIVE / STANDBY MANAGER
+# =========================================================================================
+
+class GatewayManager:
+    """Manages dynamic activation and standby states for XiaoZhi Cloud MCP and ESP32 gateway."""
+    def __init__(self):
+        self.is_active = True
+        self.mcp_connected = False
+        self.mcp_task: Optional[asyncio.Task] = None
+        self.active_ws = None
+
+    def get_status(self) -> dict:
+        return {
+            "active": self.is_active,
+            "mcp_connected": self.mcp_connected,
+            "status_text": "ONLINE" if (self.is_active and self.mcp_connected) else ("STANDBY" if not self.is_active else "CONNECTING")
+        }
+
+    async def set_active(self, active: bool, mcp_url: Optional[str] = None) -> dict:
+        self.is_active = active
+        from backend.events import broadcast_event
+
+        target_url = mcp_url or os.getenv("XIAOZHI_MCP_URL", DEFAULT_MCP_URL)
+        if not active:
+            self.mcp_connected = False
+            if self.active_ws:
+                try:
+                    await self.active_ws.close()
+                except Exception:
+                    pass
+                self.active_ws = None
+            if self.mcp_task and not self.mcp_task.done():
+                self.mcp_task.cancel()
+                self.mcp_task = None
+            logger.info("[XiaoZhi Gateway] Switched to STANDBY mode (MCP WebSocket disconnected).")
+        else:
+            if not self.mcp_task or self.mcp_task.done():
+                logger.info("[XiaoZhi Gateway] Switched to ACTIVE mode (Connecting to Cloud MCP)...")
+                self.mcp_task = asyncio.create_task(run_xiaozhi_mcp_bridge(target_url))
+
+        status_dict = self.get_status()
+        broadcast_event("gateway_status", status_dict)
+        return status_dict
+
+gateway_manager = GatewayManager()
+
+# =========================================================================================
 # TOOL DEFINITIONS FOR XIAOZHI CLOUD LLM
 # =========================================================================================
 
@@ -268,14 +315,15 @@ async def push_cloud_broadcast(text: str) -> bool:
 async def run_xiaozhi_mcp_bridge(mcp_ws_url: str = DEFAULT_MCP_URL):
     """
     Maintains a persistent, auto-reconnecting JSON-RPC 2.0 WebSocket client connection
-    to XiaoZhi Cloud MCP Endpoint.
+    to XiaoZhi Cloud MCP Endpoint while gateway_manager is active.
     """
     global active_mcp_ws
     import websockets
+    from backend.events import broadcast_event
 
     logger.info(f"Connecting to XiaoZhi Cloud MCP Endpoint at: {mcp_ws_url[:50]}...")
 
-    while True:
+    while gateway_manager.is_active:
         try:
             async with websockets.connect(
                 mcp_ws_url,
@@ -284,9 +332,14 @@ async def run_xiaozhi_mcp_bridge(mcp_ws_url: str = DEFAULT_MCP_URL):
                 max_size=10 * 1024 * 1024
             ) as ws:
                 active_mcp_ws = ws
+                gateway_manager.active_ws = ws
+                gateway_manager.mcp_connected = True
                 logger.info("Successfully CONNECTED to XiaoZhi Cloud MCP Bridge! Status: ONLINE (Green)")
+                broadcast_event("gateway_status", gateway_manager.get_status())
 
                 async for message in ws:
+                    if not gateway_manager.is_active:
+                        break
                     try:
                         data = json.loads(message)
                         msg_id = data.get("id")
@@ -306,7 +359,7 @@ async def run_xiaozhi_mcp_bridge(mcp_ws_url: str = DEFAULT_MCP_URL):
                                     },
                                     "serverInfo": {
                                         "name": "SensorsHub-CentralServer",
-                                        "version": "2.4.0"
+                                        "version": "2.5.0"
                                     }
                                 }
                             }
@@ -376,8 +429,16 @@ async def run_xiaozhi_mcp_bridge(mcp_ws_url: str = DEFAULT_MCP_URL):
             logger.info("XiaoZhi MCP Bridge task cancelled.")
             break
         except Exception as e:
+            gateway_manager.mcp_connected = False
+            broadcast_event("gateway_status", gateway_manager.get_status())
+            if not gateway_manager.is_active:
+                break
             logger.warning(f"XiaoZhi MCP WebSocket disconnected: {e}. Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
+        finally:
+            gateway_manager.mcp_connected = False
+            gateway_manager.active_ws = None
+            broadcast_event("gateway_status", gateway_manager.get_status())
 
 if __name__ == "__main__":
     url = os.getenv("XIAOZHI_MCP_URL", DEFAULT_MCP_URL)

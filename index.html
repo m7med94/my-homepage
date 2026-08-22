@@ -50,6 +50,10 @@
         </nav>
 
         <div class="nav-actions">
+          <button class="btn-audio" id="btnGatewayToggle" title="Toggle XiaoZhi Cloud MCP & ESP32 Hardware Bridge Active/Standby">
+            <span class="pulse-dot" id="gatewayPulseDot"></span>
+            <span id="gatewayStatusText">Gateway: ACTIVE</span>
+          </button>
           <button class="btn-audio" id="audioBtn" title="Toggle Celestial Ambient Sound">
             <span id="audioIcon">♫</span>
             <span id="audioText">Sound</span>
@@ -151,6 +155,10 @@
               <p class="hardware-hub-subtitle">Real-time local network diagnostics, ESP32 status verification, and instant OLED push alerts.</p>
             </div>
             <div class="net-status-badge-wrap">
+              <button class="btn-cyber primary" id="btnGatewayTogglePanel" title="Click to toggle ESP32 & AI Gateway on/off" style="padding: 6px 14px; font-size: 11px; font-family: var(--font-mono); font-weight: 600;">
+                <span class="pulse-dot" id="gatewayPanelPulseDot"></span>
+                <span id="gatewayPanelText">GATEWAY: ACTIVE</span>
+              </button>
               <span class="badge-status" id="esp32Badge">
                 <span class="pulse-dot"></span>
                 <span id="esp32StatusText">ESP32 Online (GCP)</span>

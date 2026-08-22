@@ -1250,6 +1250,8 @@ function connectToEsp32Sse() {
         if (payload.type === 'esp32_data') {
           logEvent(`ESP32 Voice Ingestion: [${payload.category || 'transcript'}] ${JSON.stringify(payload.data || {})}`, 'info');
           playChime();
+        } else if (payload.type === 'gateway_status') {
+          updateGatewayUI(payload);
         } else if (payload.type === 'todo_created' || payload.type === 'todo_deleted' || payload.type === 'todo_updated') {
           fetchDashboardTodos();
         }
@@ -1339,11 +1341,108 @@ function escapeHtml(str) {
 }
 
 // =========================================================================
-// 8. INITIALIZATION & EVENT BINDINGS
+// 8. GATEWAY MASTER ACTIVE / STANDBY CONTROL
+// =========================================================================
+let isGatewayActive = true;
+
+async function fetchGatewayStatus() {
+  try {
+    const res = await fetch('/api/v1/gateway/status');
+    if (!res.ok) throw new Error('Status unreachable');
+    const data = await res.json();
+    isGatewayActive = data.active !== false;
+    updateGatewayUI(data);
+  } catch (e) {
+    // If backend is completely offline, set UI gracefully
+    updateGatewayUI({ active: false, status_text: 'STANDBY (Offline)', mcp_connected: false });
+  }
+}
+
+async function toggleGateway() {
+  try {
+    const res = await fetch('/api/v1/gateway/toggle', { method: 'POST' });
+    if (!res.ok) throw new Error('Toggle failed');
+    const data = await res.json();
+    isGatewayActive = data.active !== false;
+    updateGatewayUI(data);
+
+    playChime();
+    if (isGatewayActive) {
+      showToast('XiaoZhi Cloud MCP & Hardware Gateway ACTIVE', 'info');
+      logEvent('Gateway activated: Cloud MCP WebSocket and ESP32 uplink connected.', 'info');
+    } else {
+      showToast('Gateway in STANDBY mode (0% background CPU / MCP paused)', 'warn');
+      logEvent('Gateway standby: Cloud MCP disconnected, AI background loops paused.', 'warn');
+    }
+  } catch (e) {
+    // Local toggle fallback
+    isGatewayActive = !isGatewayActive;
+    updateGatewayUI({ active: isGatewayActive, status_text: isGatewayActive ? 'ONLINE (Local)' : 'STANDBY (Local)', mcp_connected: false });
+    showToast(`Gateway set to ${isGatewayActive ? 'ACTIVE' : 'STANDBY'}`, 'info');
+  }
+}
+
+function updateGatewayUI(data) {
+  const topBtn = document.getElementById('btnGatewayToggle');
+  const topDot = document.getElementById('gatewayPulseDot');
+  const topText = document.getElementById('gatewayStatusText');
+
+  const panelBtn = document.getElementById('btnGatewayTogglePanel');
+  const panelDot = document.getElementById('gatewayPanelPulseDot');
+  const panelText = document.getElementById('gatewayPanelText');
+
+  const active = data.active !== false;
+
+  if (topText) topText.textContent = active ? 'Gateway: ACTIVE' : 'Gateway: STANDBY';
+  if (topDot) {
+    if (active) {
+      topDot.classList.remove('paused');
+      topDot.style.background = 'var(--emerald)';
+      topDot.style.boxShadow = '0 0 10px var(--emerald)';
+    } else {
+      topDot.classList.add('paused');
+      topDot.style.background = 'var(--amber)';
+      topDot.style.boxShadow = '0 0 8px var(--amber)';
+    }
+  }
+  if (topBtn) {
+    if (active) topBtn.classList.add('active');
+    else topBtn.classList.remove('active');
+  }
+
+  if (panelText) panelText.textContent = active ? 'GATEWAY: ACTIVE' : 'GATEWAY: STANDBY';
+  if (panelDot) {
+    if (active) {
+      panelDot.classList.remove('paused');
+      panelDot.style.background = 'var(--emerald)';
+      panelDot.style.boxShadow = '0 0 10px var(--emerald)';
+    } else {
+      panelDot.classList.add('paused');
+      panelDot.style.background = 'var(--amber)';
+      panelDot.style.boxShadow = '0 0 8px var(--amber)';
+    }
+  }
+  if (panelBtn) {
+    if (active) {
+      panelBtn.className = 'btn-cyber primary';
+    } else {
+      panelBtn.className = 'btn-cyber amber';
+    }
+  }
+}
+
+// =========================================================================
+// 9. INITIALIZATION & EVENT BINDINGS
 // =========================================================================
 function bindEvents() {
   const audioBtn = document.getElementById('audioBtn');
   if (audioBtn) audioBtn.addEventListener('click', toggleCelestialSound);
+
+  const btnGwTop = document.getElementById('btnGatewayToggle');
+  if (btnGwTop) btnGwTop.addEventListener('click', toggleGateway);
+
+  const btnGwPanel = document.getElementById('btnGatewayTogglePanel');
+  if (btnGwPanel) btnGwPanel.addEventListener('click', toggleGateway);
 
   const pauseBtn = document.getElementById('btnPauseResume');
   const feedStatusText = document.getElementById('feedStatusText');
@@ -1425,6 +1524,7 @@ async function initApp() {
   connectToEsp32Sse();
   checkEsp32Connection(false);
   checkServerDiskSpace(false);
+  fetchGatewayStatus();
 
   logEvent('SensorsHub Cortesa engine active. Reconciled with Cloud MCP.', 'info');
 

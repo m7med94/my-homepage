@@ -476,3 +476,33 @@ async def device_websocket_endpoint(websocket: WebSocket, device_id: str = "mo-p
     finally:
         if connected_device_sockets.get(device_id) == websocket:
             connected_device_sockets.pop(device_id, None)
+
+# =========================================================================================
+# GATEWAY ACTIVE / STANDBY MASTER CONTROL
+# =========================================================================================
+
+class GatewayToggleRequest(BaseModel):
+    active: Optional[bool] = None
+
+@router.get("/api/v1/gateway/status", summary="Get XiaoZhi Cloud MCP & Hardware Gateway Status")
+def get_gateway_status_api():
+    """Returns current active/standby status and MCP connection health."""
+    try:
+        from backend.mcp_bridge import gateway_manager
+        return {"status": "success", **gateway_manager.get_status()}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "active": True, "mcp_connected": False}
+
+@router.post("/api/v1/gateway/toggle", summary="Toggle Gateway between Active and Standby (0% CPU/bandwidth)")
+async def toggle_gateway_status_api(req: Optional[GatewayToggleRequest] = None):
+    """
+    Toggles the XiaoZhi Cloud MCP WebSocket and ESP32 gateway on/off dynamically.
+    When Standby: Disconnects cloud MCP WebSocket and stops background AI/hardware tasks.
+    """
+    try:
+        from backend.mcp_bridge import gateway_manager
+        new_state = req.active if (req and req.active is not None) else not gateway_manager.is_active
+        res = await gateway_manager.set_active(new_state)
+        return {"status": "success", **res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error toggling gateway: {e}")
