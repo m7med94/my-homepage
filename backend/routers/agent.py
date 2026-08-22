@@ -398,8 +398,8 @@ async def execute_sora_tool(tool_name: str, args: dict) -> dict:
 
         elif tool_name == "ping_network_target":
             tgt = args.get("target", "1.1.1.1")
-            from backend.routers.network import execute_icmp_ping
-            res = execute_icmp_ping(tgt, count=1, timeout_sec=2)
+            from backend.routers.network import ping_host
+            res = ping_host(tgt, timeout_sec=2.0)
             return {"status": "success", "target": tgt, "reachable": res.get("reachable", False), "latency_ms": res.get("latency_ms")}
 
         elif tool_name == "manage_sora_memory":

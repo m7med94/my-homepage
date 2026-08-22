@@ -276,12 +276,12 @@ async def execute_mcp_tool(name: str, arguments: Dict[str, Any]) -> str:
     elif name == "ping_network_target":
         target = arguments.get("target", "127.0.0.1")
         try:
-            from backend.routers.network import execute_icmp_ping
-            res = execute_icmp_ping(target, count=1, timeout_sec=2)
-            if res["reachable"]:
-                return f"Ping to {target} successful: Round-trip latency is {res['latency_ms']} ms."
+            from backend.routers.network import ping_host
+            res = ping_host(target, timeout_sec=2.0)
+            if res.get("reachable", False):
+                return f"Ping to {target} successful: Round-trip latency is {res.get('latency_ms')} ms."
             else:
-                return f"Ping to {target} failed: Target is unreachable ({res.get('status')})."
+                return f"Ping to {target} failed: Target is unreachable ({res.get('summary', 'No response')})."
         except Exception as e:
             return f"Error pinging {target}: {e}"
 
